@@ -1,0 +1,139 @@
+.script-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(20, 19, 18, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.script-editor-box {
+  width: min(900px, 90vw);
+  height: min(640px, 85vh);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif;
+}
+
+.script-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #f3f2f1;
+  border-bottom: 1px solid #e5e4e3;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2b2a28;
+}
+
+.script-editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.script-editor-help-toggle {
+  border: 1px solid #d0cfce;
+  background: #ffffff;
+  color: #444341;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.script-editor-help-toggle:hover {
+  background: #eef4fc;
+  border-color: #9dbde0;
+}
+
+.script-editor-help-toggle.is-active {
+  background: #1a5fb4;
+  border-color: #1a5fb4;
+  color: #ffffff;
+}
+
+.script-editor-close {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: #79776f;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.script-editor-close:hover {
+  background: #e5e4e3;
+}
+
+.script-editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.script-editor-editor-pane {
+  flex: 1;
+  min-width: 0;
+}
+
+.script-editor-help-pane {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid #e5e4e3;
+  background: #f8f7f6;
+  overflow-y: auto;
+}
+
+.script-editor-help-pane-body {
+  padding: 14px 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #444341;
+  white-space: pre-wrap;
+}
+
+.script-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #e5e4e3;
+}
+
+.script-editor-cancel,
+.script-editor-save {
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.script-editor-cancel {
+  background: transparent;
+  border-color: #d0cfce;
+  color: #444341;
+}
+
+.script-editor-cancel:hover {
+  background: #f3f2f1;
+}
+
+.script-editor-save {
+  background: #1a5fb4;
+  color: #ffffff;
+}
+
+.script-editor-save:hover {
+  background: #164e94;
+}

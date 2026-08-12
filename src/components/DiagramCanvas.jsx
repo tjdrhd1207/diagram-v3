@@ -1,6 +1,22 @@
 import { forwardRef, useEffect, useImperativeHandle, useId, useRef, useState } from 'react';
 import { Diagram } from '../lib/diagram-library.js';
 import LinkEventPicker from './LinkEventPicker.jsx';
+import { buildGroupColorPallete, paletteKeyForGroup } from '../lib/groupColors.js';
+
+// createNode()가 막 만든 블록은 diagram.components에 diagram.nextSeq-1 아이디로
+// 곧바로 등록돼 있다 (Component 생성자가 동기적으로 등록함) — onNodeCreated는
+// diagram.ready가 false인 새 캔버스에서는 절대 안 뜨기 때문에 (아래 setCreateMode
+// 주석 참고) 이 방식으로 "방금 만든 블록"을 직접 찾아서 그룹 색을 입힌다.
+// [MEMO]는 meta.nodes에 없는 특수 노드라 group이 없고, Memo는 setColor가
+// 없으므로 자연히 건너뛴다.
+function applyGroupColorToNewestBlock(diagram, meta, nodeName) {
+  if (!diagram) return;
+  const group = meta?.nodes?.[nodeName]?.group;
+  const newestId = String(diagram.nextSeq - 1).padStart(8, '0');
+  const block = diagram.components.get(newestId);
+  if (!block || typeof block.setColor !== 'function') return;
+  block.setColor(paletteKeyForGroup(group, 'bg'), paletteKeyForGroup(group, 'icon'));
+}
 
 /**
  * DiagramCanvas
@@ -28,42 +44,57 @@ import LinkEventPicker from './LinkEventPicker.jsx';
  *     since fixing it means editing diagram-library.js itself.
  */
 const DiagramCanvas = forwardRef(function DiagramCanvas(
-  { meta, options = {}, onSelectionChange, onInsertModeConsumed, className },
+  { meta, options = {}, onSelectionChange, onSelectedBlockChange, onInsertModeConsumed, className },
   forwardedRef
 ) {
   const rawId = useId().replace(/:/g, '');
   const svgId = `diagram-canvas-${rawId}`;
   const diagramInstanceRef = useRef(null);
   const [linkPicker, setLinkPicker] = useState(null)
-  const selectedCountRef = useRef(0);
+  const selectedItemsRef = useRef(new Set());
 
   // Keep the latest versions of caller-supplied callbacks without
   // re-registering them with the library on every render.
   const latestOptionsRef = useRef(options);
   const latestOnSelectionChangeRef = useRef(onSelectionChange);
+  const latestOnSelectedBlockChangeRef = useRef(onSelectedBlockChange);
   const latestOnInsertModeConsumedRef = useRef(onInsertModeConsumed);
   useEffect(() => {
     latestOptionsRef.current = options;
     latestOnSelectionChangeRef.current = onSelectionChange;
+    latestOnSelectedBlockChangeRef.current = onSelectedBlockChange;
     latestOnInsertModeConsumedRef.current = onInsertModeConsumed;
   });
 
   useEffect(() => {
     if (!meta) return;
 
-    const bumpSelection = (delta) => {
-      selectedCountRef.current = Math.max(0, selectedCountRef.current + delta);
-      latestOnSelectionChangeRef.current?.(selectedCountRef.current);
+    // 선택된 아이템 집합을 직접 들고 있다가, "정확히 블록 1개만 선택된"
+    // 상태일 때만 그 블록을 프로퍼티 패널 쪽으로 올려보낸다. Memo/Link도
+    // 같은 onNodeSelected를 타고 들어올 수 있어서 metaName 존재 여부로
+    // "이건 Block이다"를 구분한다 (Block만 metaName/userData를 가짐).
+    const notifySelectionChanged = () => {
+      const items = selectedItemsRef.current;
+      latestOnSelectionChangeRef.current?.(items.size);
+      const sole = items.size === 1 ? [...items][0] : null;
+      const soleBlock = sole && typeof sole.metaName === 'string' ? sole : null;
+      latestOnSelectedBlockChangeRef.current?.(soleBlock);
     };
 
     const diagram = new Diagram(`#${svgId}`, meta, {
       ...latestOptionsRef.current,
+      // Diagram.defaultOptions.colorPallete is deep-merged (mergeDeep), so
+      // this only *adds* our group-* keys alongside the built-in named
+      // colors rather than replacing the palette.
+      colorPallete: buildGroupColorPallete(),
       onNodeSelected: (item) => {
-        bumpSelection(1);
+        selectedItemsRef.current.add(item);
+        notifySelectionChanged();
         latestOptionsRef.current.onNodeSelected?.(item);
       },
       onNodeUnSelected: (item) => {
-        bumpSelection(-1);
+        selectedItemsRef.current.delete(item);
+        notifySelectionChanged();
         latestOptionsRef.current.onNodeUnSelected?.(item);
       },
       onNodeClicked: (...args) => latestOptionsRef.current.onNodeClicked?.(...args),
@@ -138,16 +169,25 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
     // Escape hatch for anything not wrapped below.
     getInstance: () => diagramInstanceRef.current,
 
-    createNode: (nodeName, x, y) => diagramInstanceRef.current?.createNode(nodeName, x, y),
+    createNode: (nodeName, x, y) => {
+      diagramInstanceRef.current?.createNode(nodeName, x, y);
+      applyGroupColorToNewestBlock(diagramInstanceRef.current, meta, nodeName);
+    },
     setCreateMode: (nodeName) => {
       diagramInstanceRef.current?.setCreateMode(nodeName);
       // onNodeCreated는 diagram.ready가 true일 때만 발생하는데, deserialize()로
       // 파일을 불러온 적 없는 새 캔버스에서는 ready가 영원히 false라 안 뜬다.
       // 대신 라이브러리 내부의 "다음 클릭 한 번에 소비" 동작을 그대로 미러링.
+      // 이 리스너는 라이브러리 자신의 click 핸들러(svg 생성 시점에 이미
+      // 등록됨)보다 나중에 등록되므로, 같은 클릭 이벤트에 대해 항상 그
+      // 다음에 실행된다 — 즉 이 시점엔 createNode()가 이미 끝나 있다.
       if (nodeName) {
         diagramInstanceRef.current?.svg?.addEventListener(
           'click',
-          () => latestOnInsertModeConsumedRef.current?.(),
+          () => {
+            latestOnInsertModeConsumedRef.current?.();
+            applyGroupColorToNewestBlock(diagramInstanceRef.current, meta, nodeName);
+          },
           { once: true }
         );
       }
@@ -158,7 +198,16 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
     copy: () => diagramInstanceRef.current?.copy(),
     cut: () => diagramInstanceRef.current?.cut(),
     paste: () => diagramInstanceRef.current?.paste(),
-    remove: () => diagramInstanceRef.current?.delete(),
+    remove: () => {
+      // diagram.delete()는 선택된 아이템들을 지우면서 onNodeUnSelected를
+      // 개별적으로 쏘지 않는다. 그대로 두면 우리 selectedItemsRef가
+      // 삭제된(이제 쓸모없는) 블록 참조를 계속 들고 있게 되어 프로퍼티
+      // 패널이 죽은 블록을 계속 보여줄 수 있음 — 직접 비워준다.
+      diagramInstanceRef.current?.delete();
+      selectedItemsRef.current.clear();
+      latestOnSelectionChangeRef.current?.(0);
+      latestOnSelectedBlockChangeRef.current?.(null);
+    },
     selectAll: () => diagramInstanceRef.current?.selectAll(),
     unselectAll: () => diagramInstanceRef.current?.unselectAll(),
 

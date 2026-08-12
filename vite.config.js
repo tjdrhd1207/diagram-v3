@@ -7,4 +7,10 @@ import react from '@vitejs/plugin-react';
 // for why Next.js's SSR would need extra guarding for this library.
 export default defineConfig({
   plugins: [react()],
+  // Monaco's own workers (editor.worker, ts.worker) are ES modules —
+  // without this Vite dev-serves them as classic scripts and they fail
+  // to import their internal dependencies.
+  worker: {
+    format: 'es',
+  },
 });

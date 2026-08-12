@@ -1,0 +1,121 @@
+.property-panel {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-left: 1px solid #d0cfce;
+  font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif;
+  overflow-y: auto;
+}
+
+.property-panel-empty {
+  padding: 16px;
+  font-size: 12px;
+  color: #79776f;
+}
+
+.property-panel-header {
+  padding: 12px 14px;
+  background: #f3f2f1;
+  border-bottom: 1px solid #e5e4e3;
+}
+
+.property-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2b2a28;
+}
+
+.property-panel-subtitle {
+  font-size: 11px;
+  color: #79776f;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  margin-top: 2px;
+}
+
+.property-panel-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.property-panel-section-title {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #79776f;
+  border-bottom: 1px solid #e5e4e3;
+  padding-bottom: 4px;
+}
+
+.property-panel-description {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e4e3;
+  font-size: 11px;
+  color: #79776f;
+  line-height: 1.5;
+}
+
+.property-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.property-field-label {
+  color: #444341;
+  font-weight: 500;
+}
+
+.property-field-required {
+  color: #c0392b;
+  margin-left: 2px;
+}
+
+.property-field.is-empty input,
+.property-field.is-empty select {
+  border-color: #e0a1a1;
+  background: #fdf3f3;
+}
+
+.property-field input[type='text'],
+.property-field input[type='number'],
+.property-field select,
+.property-field textarea {
+  padding: 5px 7px;
+  border: 1px solid #d0cfce;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.property-field textarea {
+  resize: vertical;
+}
+
+.property-field input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  align-self: flex-start;
+}
+
+.property-field-script-button {
+  padding: 6px 8px;
+  border: 1px solid #d0cfce;
+  border-radius: 4px;
+  background: #f8f7f6;
+  color: #2b2a28;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+}
+
+.property-field-script-button:hover {
+  background: #eef4fc;
+  border-color: #9dbde0;
+}

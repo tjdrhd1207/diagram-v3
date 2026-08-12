@@ -31,7 +31,7 @@ body {
 
 .canvas-area {
   flex: 1;
-  min-height: 0;
+  min-width: 0;
   background:
     linear-gradient(90deg, #eef0f2 1px, transparent 1px),
     linear-gradient(#eef0f2 1px, transparent 1px);
@@ -44,4 +44,10 @@ body {
   height: 100%;
   display: block;
   outline: none;
+}
+
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }

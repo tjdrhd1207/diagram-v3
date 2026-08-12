@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStylesheet } from '../lib/useStylesheet.js';
+import { groupColorStyle } from '../lib/groupColors.js';
 
 
 const TABS = ['홈', '삽입', '정렬', '보기', '파일'];
@@ -76,7 +77,11 @@ export default function RibbonMenu({ diagramRef, meta, selectedCount = 0, active
 
         {activeTab === '삽입' &&
           Object.entries(groupNodesByCategory(meta?.nodes)).map(([groupName, entries]) => (
-            <RibbonGroup key={groupName} label={`${groupName} (클릭 후 캔버스를 클릭)`}>
+            <RibbonGroup
+              key={groupName}
+              label={`${groupName} (클릭 후 캔버스를 클릭)`}
+              style={groupColorStyle(groupName)}
+            >
               {entries.map(([nodeName, def]) => (
                 <RibbonButton
                   key={nodeName}
@@ -134,9 +139,9 @@ function groupNodesByCategory(nodes) {
   return byGroup;
 }
 
-function RibbonGroup({ label, children }) {
+function RibbonGroup({ label, children, style }) {
   return (
-    <div className="ribbon-group">
+    <div className="ribbon-group" style={style}>
       <div className="ribbon-group-buttons">{children}</div>
       <div className="ribbon-group-label">{label}</div>
     </div>
