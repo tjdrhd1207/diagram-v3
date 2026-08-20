@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStylesheet } from '../lib/useStylesheet.js';
 import { groupColorStyle } from '../lib/groupColors.js';
+import { isGroupFace } from '../lib/blockGrouping.js';
 
 
 const TABS = ['홈', '삽입', '정렬', '보기', '파일'];
@@ -21,12 +22,14 @@ const ALIGN_BUTTONS = [
  * on the DiagramCanvas ref. All the actual behavior lives in
  * diagram-library.js; this component only decides what's visible/enabled.
  */
-export default function RibbonMenu({ diagramRef, meta, selectedCount = 0, activeInsertNode, onInsertClick }) {
+export default function RibbonMenu({ diagramRef, meta, selectedCount = 0, selectedBlock, activeInsertNode, onInsertClick }) {
   useStylesheet('/css/ribbon-menu.css');
 
   const [activeTab, setActiveTab] = useState('홈');
   const [clickedButton, setClickedButton] = useState(null);
   const canAlign = selectedCount >= 2;
+  const canGroup = selectedCount >= 2;
+  const isFaceSelected = selectedCount === 1 && isGroupFace(selectedBlock);
 
   const call = (method, ...args) => diagramRef.current?.[method]?.(...args);
 
@@ -71,6 +74,10 @@ export default function RibbonMenu({ diagramRef, meta, selectedCount = 0, active
             <RibbonGroup label="편집">
               <RibbonButton icon="🗑" label="삭제" onClick={() => call('remove')} />
               <RibbonButton icon="▦" label="전체 선택" onClick={() => call('selectAll')} />
+            </RibbonGroup>
+            <RibbonGroup label={canGroup ? '그룹' : '그룹 (2개 이상 선택 필요)'}>
+              <RibbonButton icon="⛶" label="그룹으로 묶기" disabled={!canGroup} onClick={() => call('groupSelection')} />
+              <RibbonButton icon="⛝" label="그룹 해제" disabled={!isFaceSelected} onClick={() => call('ungroupSelection')} />
             </RibbonGroup>
           </>
         )}
@@ -133,6 +140,9 @@ export default function RibbonMenu({ diagramRef, meta, selectedCount = 0, active
 function groupNodesByCategory(nodes) {
   const byGroup = {};
   for (const [nodeName, def] of Object.entries(nodes ?? {})) {
+    // withGroupFaceMeta()가 얹어주는 그룹 얼굴 같은 합성 엔트리는 사용자가 직접
+    // "삽입"할 수 있는 노드 타입이 아니므로 목록에서 제외한다.
+    if (def.internal) continue;
     const groupName = def.group || '기타';
     (byGroup[groupName] ??= []).push([nodeName, def]);
   }

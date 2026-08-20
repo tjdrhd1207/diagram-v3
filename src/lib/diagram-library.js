@@ -2252,6 +2252,12 @@ class ActionManager {
             // 1) 커스텀 이벤트가 추가되는 경우
         } else if (op === ActionManager.CUSTOM_EVENT_REMOVED) {
             // 1) 커스텀 이벤트가 삭제되는 경우
+        } else if (op === ActionManager.GROUP_ACTION) {
+            // 1) 여러 블록을 그룹으로 묶기/풀기/접기-펼치기 하는 경우.
+            // 그룹 관련 실제 로직은 이 라이브러리 바깥(blockGrouping.js)에 전부 있고,
+            // 여기서는 그 로직이 만들어 넘긴 undo/redo 클로저를 그대로 호출만 한다 —
+            // append()가 화이트리스트 방식이라 여기 분기가 없으면 이 액션 자체가
+            // 조용히 버려진다 (아래 else return).
         } else {
             return;
         }
@@ -2402,6 +2408,8 @@ class ActionManager {
                 const customEventsHeight = block.eventElementArray.length * CUSTOM_EVENT_HEIGHT;
                 const eventBlock = new CustomEventBlock(block.diagram, id, event, block, CUSTOM_EVENT_BLOCK, block.x, block.y + block.h + customEventsHeight, block.w, CUSTOM_EVENT_HEIGHT);
                 block.eventElementArray.push(eventBlock);
+            } else if (op === ActionManager.GROUP_ACTION) {
+                data.undo();
             }
         } finally {
             if (item) {
@@ -2487,6 +2495,8 @@ class ActionManager {
                         item._deleteMenu();
                     }
                 });
+            } else if (op === ActionManager.GROUP_ACTION) {
+                data.redo();
             }
         } finally {
             this.save = true;
@@ -2506,6 +2516,10 @@ ActionManager.LINK_CONNECT_CHANGED = 'LINK_CONNECT_CHANGED';
 ActionManager.LINK_SHAPE_CHANGED = 'LINK_SHAPE_CHANGED';
 ActionManager.CUSTOM_EVENT_ADDED = 'CUSTOM_EVENT_ADDED';
 ActionManager.CUSTOM_EVENT_REMOVED = 'CUSTOM_EVENT_REMOVED';
+// data: { undo: () => void, redo: () => void } — closures owned by blockGrouping.js.
+// This op is deliberately generic: the library only ever calls whichever closure it's
+// handed, so it never needs to know what "grouping" means (see blockGrouping.js).
+ActionManager.GROUP_ACTION = 'GROUP_ACTION';
 
 /**
  * UIComponent
@@ -7664,4 +7678,4 @@ class NodeWrapper {
     }
 }
 
-export { Diagram, ModifyEventTypes, KeyActionNames, NodeWrapper };
+export { Diagram, ModifyEventTypes, KeyActionNames, NodeWrapper, Block, Link, ActionManager };

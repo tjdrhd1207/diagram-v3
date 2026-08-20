@@ -2,6 +2,14 @@ import { forwardRef, useEffect, useImperativeHandle, useId, useRef, useState } f
 import { Diagram } from '../lib/diagram-library.js';
 import LinkEventPicker from './LinkEventPicker.jsx';
 import { buildGroupColorPallete, paletteKeyForGroup } from '../lib/groupColors.js';
+import {
+  createGroup,
+  dissolveGroup,
+  isGroupFace,
+  prepareSelectionForDeletion,
+  rehydrateGroupsAfterDeserialize,
+  reconcileGroupBounds,
+} from '../lib/blockGrouping.js';
 
 // createNode()가 막 만든 블록은 diagram.components에 diagram.nextSeq-1 아이디로
 // 곧바로 등록돼 있다 (Component 생성자가 동기적으로 등록함) — onNodeCreated는
@@ -155,6 +163,24 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
 
     diagramInstanceRef.current = diagram;
 
+    // 멤버 블록을 라이브러리의 기본 드래그(mousedown on .draggable -> dragStart ->
+    // mousemove로 이동)로 옮기는 동안, 그 블록이 그룹에 속해 있으면 경계 사각형 밖으로
+    // 못 나가게 보정한다. svg 생성 시점에 이미 등록된 라이브러리 자신의 mousemove
+    // 리스너보다 나중에 등록되므로, 같은 이벤트에 대해 항상 그 다음에 실행된다 — 즉
+    // 이 시점엔 라이브러리가 이미 (경계를 넘었을 수도 있는) 새 위치를 반영한 뒤다.
+    diagram.svg.addEventListener('mousemove', () => {
+      if (diagram.dragStart) reconcileGroupBounds(diagram);
+    });
+    diagram.svg.addEventListener('mouseup', () => reconcileGroupBounds(diagram));
+
+    if (import.meta.env.DEV) {
+      // 개발 중 콘솔/테스트 스크립트에서 diagram.serialize()/deserialize() 등을
+      // 직접 찔러볼 수 있도록 하는 디버그 전용 노출 — 프로덕션 빌드에는 안 들어감.
+      window.__diagram = diagram;
+      window.__DiagramClass = Diagram;
+      window.__rehydrateGroupsAfterDeserialize = rehydrateGroupsAfterDeserialize;
+    }
+
     return () => {
       // See caveat #3 above — this clears the visible canvas but does
       // not remove the instance from the library's internal registry.
@@ -199,17 +225,47 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
     cut: () => diagramInstanceRef.current?.cut(),
     paste: () => diagramInstanceRef.current?.paste(),
     remove: () => {
+      const diagram = diagramInstanceRef.current;
+      if (!diagram) return;
+      // 선택된 것 중 그룹 앵커가 있으면 일반 삭제 대상에서 빼고 대신 정식으로
+      // dissolveGroup()을 호출한다 (그래야 테두리/레지스트리까지 같이 정리됨 —
+      // 앵커를 지운다는 건 "그룹 해제"지 멤버까지 지우는 게 아니다). 그 외 멤버
+      // 블록들은 이제 평범한 블록이라 특별히 손댈 게 없다.
+      prepareSelectionForDeletion(diagram);
+      // 앵커만 선택돼 있던 경우 위에서 선택이 비워졌을 수 있다 — 그 상태로
+      // diagram.delete()를 부르면 빈 COMPONENTS_REMOVED 항목이 쓸데없이
+      // undo 스택에 쌓이므로, 지울 게 남아있을 때만 호출한다.
+      if (diagram.selectedItems.length > 0) {
+        diagram.delete();
+      }
       // diagram.delete()는 선택된 아이템들을 지우면서 onNodeUnSelected를
       // 개별적으로 쏘지 않는다. 그대로 두면 우리 selectedItemsRef가
       // 삭제된(이제 쓸모없는) 블록 참조를 계속 들고 있게 되어 프로퍼티
       // 패널이 죽은 블록을 계속 보여줄 수 있음 — 직접 비워준다.
-      diagramInstanceRef.current?.delete();
       selectedItemsRef.current.clear();
       latestOnSelectionChangeRef.current?.(0);
       latestOnSelectedBlockChangeRef.current?.(null);
     },
     selectAll: () => diagramInstanceRef.current?.selectAll(),
     unselectAll: () => diagramInstanceRef.current?.unselectAll(),
+
+    // 여러 블록을 하나의 그룹으로 묶기/풀기. createGroup/dissolveGroup 내부에서
+    // block.select()/unselect()를 호출하면 그게 diagram의 onNodeSelected/
+    // onNodeUnSelected를 그대로 태우기 때문에, 위쪽 useEffect의
+    // notifySelectionChanged()가 자동으로 실행돼 React 쪽 selectedCount/selectedBlock도
+    // 별도 코드 없이 따라간다.
+    groupSelection: () => {
+      const diagram = diagramInstanceRef.current;
+      if (!diagram) return;
+      const members = [...selectedItemsRef.current].filter((item) => item.type === 'B');
+      createGroup(diagram, members);
+    },
+    ungroupSelection: () => {
+      const diagram = diagramInstanceRef.current;
+      if (!diagram) return;
+      const face = [...selectedItemsRef.current].find((item) => isGroupFace(item));
+      if (face) dissolveGroup(diagram, face);
+    },
 
     align: (type) => diagramInstanceRef.current?.align(type),
 
