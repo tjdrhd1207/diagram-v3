@@ -30,7 +30,7 @@ const TAG_WIDTH = 44;
 const TAG_HEIGHT = 18;
 
 /**
- * sample-meta.json은 건드리지 않고, 그룹 앵커 블록이 필요로 하는 최소한의 합성 메타
+ * designer.meta.json은 건드리지 않고, 그룹 앵커 블록이 필요로 하는 최소한의 합성 메타
  * 엔트리를 원본 meta 위에 덧붙인 새 객체를 반환한다 (원본은 절대 mutate하지 않음).
  *
  * 이 엔트리가 필요한 이유:

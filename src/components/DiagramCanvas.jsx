@@ -26,6 +26,24 @@ function applyGroupColorToNewestBlock(diagram, meta, nodeName) {
   block.setColor(paletteKeyForGroup(group, 'bg'), paletteKeyForGroup(group, 'icon'));
 }
 
+// Block.deserialize()는 diagram.meta.nodes[metaName]를 가드 없이 바로 읽고 그
+// 자리에서 .buildTag에 접근한다(diagram-library.js 확인) — meta.json에 없는
+// meta-name을 쓰는 블록이 하나라도 있으면 그 즉시 TypeError를 던지며 나머지
+// 블록은 아예 만들어지지도 않는다. designer.meta.json은 66종류 노드를 정의하고
+// 있어 실제 운영 시나리오도 대부분 커버하지만, 혹시 모를 미지의 타입에 대비해
+// Diagram.deserialize()를 실제로 호출하기 전에 미리 훑어서 어떤 meta-name이
+// 빠져있는지 정확히 알려주기 위한 사전 검사 — 실패 원인을 콘솔 에러 하나로
+// 뭉개지 않고, 사용자가 meta.json에 뭘 추가해야 하는지 바로 알 수 있게 한다.
+function findMissingMetaNames(xmlText, meta) {
+  const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+  const names = new Set(
+    [...doc.querySelectorAll('block')]
+      .map((el) => el.getAttribute('meta-name'))
+      .filter(Boolean)
+  );
+  return [...names].filter((name) => !meta?.nodes?.[name]);
+}
+
 /**
  * DiagramCanvas
  *
@@ -52,7 +70,7 @@ function applyGroupColorToNewestBlock(diagram, meta, nodeName) {
  *     since fixing it means editing diagram-library.js itself.
  */
 const DiagramCanvas = forwardRef(function DiagramCanvas(
-  { meta, options = {}, onSelectionChange, onSelectedBlockChange, onInsertModeConsumed, className },
+  { meta, options = {}, onSelectionChange, onSelectedBlockChange, onInsertModeConsumed, className, initialXml, onLoadError },
   forwardedRef
 ) {
   const rawId = useId().replace(/:/g, '');
@@ -77,6 +95,20 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
   useEffect(() => {
     if (!meta) return;
 
+    if (import.meta.env.DEV) {
+      // 이 effect가 실제로 "새 캔버스 마운트"로 다시 도는지(=svgId가 매번
+      // 바뀌는지), initialXml이 실제로 넘어왔는지를 바로 확인하기 위한 임시
+      // 진단 로그. App.jsx의 loadPageIntoCanvas까지는 호출되는 게 확인됐는데
+      // 화면에 반영이 안 될 때, 문제가 "리마운트 자체가 안 됨"인지 "리마운트는
+      // 되는데 그 안에서 실패"인지를 구분하는 데 쓴다.
+      console.log('[DiagramCanvas] (re)mount', {
+        svgId,
+        hasInitialXml: !!initialXml,
+        initialXmlLength: initialXml?.length,
+        initialXmlPreview: initialXml?.slice(0, 120),
+      });
+    }
+
     // 선택된 아이템 집합을 직접 들고 있다가, "정확히 블록 1개만 선택된"
     // 상태일 때만 그 블록을 프로퍼티 패널 쪽으로 올려보낸다. Memo/Link도
     // 같은 onNodeSelected를 타고 들어올 수 있어서 metaName 존재 여부로
@@ -89,7 +121,7 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
       latestOnSelectedBlockChangeRef.current?.(soleBlock);
     };
 
-    const diagram = new Diagram(`#${svgId}`, meta, {
+    const diagramOptions = {
       ...latestOptionsRef.current,
       // Diagram.defaultOptions.colorPallete is deep-merged (mergeDeep), so
       // this only *adds* our group-* keys alongside the built-in named
@@ -159,9 +191,41 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
           },
         });
       },
-    });
+    };
+
+    // initialXml은 "파일 열기"로 이 캔버스가 새로 만들어진 경우에만 채워져 있다.
+    // App.jsx는 파일을 열 때마다 canvasKey를 함께 올려서 DiagramCanvas 전체를
+    // 리마운트시키므로(새 useId → 새 svgId), 이 값은 mount 시점에 한 번 읽고 나면
+    // 이 인스턴스가 살아있는 동안 절대 바뀌지 않는다 — meta와 같은 취급.
+    let diagram;
+    if (initialXml) {
+      const missingMetaNames = findMissingMetaNames(initialXml, meta);
+      if (missingMetaNames.length > 0) {
+        onLoadError?.(
+          `이 페이지는 meta.json에 없는 노드 타입을 사용합니다: ${missingMetaNames.join(', ')}\n` +
+            `해당 타입이 meta.json에 추가되기 전까지는 이 페이지를 열 수 없어 빈 캔버스로 대신 시작합니다.`
+        );
+        diagram = new Diagram(`#${svgId}`, meta, diagramOptions);
+      } else {
+        try {
+          diagram = Diagram.deserialize(`#${svgId}`, meta, initialXml, diagramOptions);
+        } catch (err) {
+          // findMissingMetaNames가 못 잡아내는 다른 종류의 파싱/역직렬화 오류
+          // (예: 예상 밖의 XML 구조) — 조용히 죽는 대신 원인을 그대로 알려준다.
+          console.error('Diagram.deserialize failed:', err);
+          onLoadError?.(`페이지를 불러오는 중 오류가 발생했습니다: ${err.message}`);
+          diagram = new Diagram(`#${svgId}`, meta, diagramOptions);
+        }
+      }
+    } else {
+      diagram = new Diagram(`#${svgId}`, meta, diagramOptions);
+    }
 
     diagramInstanceRef.current = diagram;
+
+    // 파일에서 불러온 경우 그룹 앵커들의 userData로부터 diagram.groups 런타임 캐시와
+    // 테두리를 복원한다. 새 빈 캔버스에서는 앵커 블록이 하나도 없으므로 그냥 no-op.
+    rehydrateGroupsAfterDeserialize(diagram);
 
     // 멤버 블록을 라이브러리의 기본 드래그(mousedown on .draggable -> dragStart ->
     // mousemove로 이동)로 옮기는 동안, 그 블록이 그룹에 속해 있으면 경계 사각형 밖으로
@@ -186,8 +250,10 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
       // not remove the instance from the library's internal registry.
       diagramInstanceRef.current = null;
     };
-    // meta is treated as immutable for the lifetime of this canvas —
-    // swapping node types at runtime would need a real re-init story.
+    // meta/initialXml are treated as immutable for the lifetime of this canvas —
+    // swapping node types or loading a different file at runtime would need a
+    // real re-init story (which App.jsx gets "for free" by remounting this whole
+    // component via a changing `key`, forcing a fresh svgId here).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, svgId]);
 
@@ -275,6 +341,11 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
 
     downloadImage: () => diagramInstanceRef.current?.downloadImage(),
     printImage: () => diagramInstanceRef.current?.printImage(),
+
+    // "프로젝트 저장" — 지금 이 캔버스 상태를 Diagram.serialize()가 만드는 그대로의
+    // XML 문자열로 돌려준다. 그룹 앵커/멤버십도 각 블록의 userData에 이미 실려
+    // 있으므로(blockGrouping.js 참고) 이 한 줄만으로 그룹까지 통째로 저장된다.
+    serialize: () => (diagramInstanceRef.current ? Diagram.serialize(diagramInstanceRef.current) : null),
 
     lock: (level) => diagramInstanceRef.current?.lock(level),
     isLocked: () => diagramInstanceRef.current?.isLocked() ?? false,

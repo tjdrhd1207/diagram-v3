@@ -148,3 +148,127 @@
   background: #164d8f;
   border-color: #164d8f;
 }
+
+/* "삽입" 탭 — 카테고리 버튼 한 줄 + 클릭 시 플라이아웃. 66종 노드를 한 번에 다
+   펼치지 않고 다른 탭들과 리본 높이를 맞추기 위한 것 (자세한 사정은 RibbonMenu.jsx
+   InsertCategoryRow 주석 참고). */
+.ribbon-insert-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ribbon-insert-category {
+  position: relative;
+}
+
+.ribbon-insert-category-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--group-color, #d0cfce);
+  border-radius: 6px;
+  background: var(--group-color-bg, #f8f7f6);
+  color: var(--group-color, #444341);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ribbon-insert-category-button:hover {
+  filter: brightness(0.97);
+}
+
+.ribbon-insert-category-button.is-open {
+  box-shadow: inset 0 0 0 2px var(--group-color, #1a5fb4);
+}
+
+.ribbon-insert-category-button.has-active {
+  background: var(--group-color, #1a5fb4);
+  color: #ffffff;
+}
+
+.ribbon-insert-category-count {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: inherit;
+}
+
+.ribbon-insert-category-button.has-active .ribbon-insert-category-count {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.ribbon-insert-flyout {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  /* width는 RibbonMenu.jsx가 카테고리별 최장 라벨 폭에 맞춰 인라인으로 꽂아준다
+     (최대 4열) — 여기 값은 그게 계산되기 전 첫 렌더링에만 잠깐 쓰이는 폴백. */
+  width: 320px;
+  max-height: 360px;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #d0cfce;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  padding: 10px;
+  gap: 6px;
+}
+
+.ribbon-insert-flyout-search {
+  padding: 6px 8px;
+  border: 1px solid #d0cfce;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.ribbon-insert-flyout-search:focus {
+  outline: none;
+  border-color: var(--group-color, #1a5fb4);
+}
+
+.ribbon-insert-flyout-hint {
+  font-size: 10.5px;
+  color: #a39d92;
+}
+
+/* 그리드 고정 칸 — RibbonButton은 기본적으로 라벨 길이만큼 폭이 늘어나는 flex
+   아이템이라(홈/정렬 탭처럼 버튼 몇 개만 있을 땐 안 보이던 문제), 짧은 라벨("분기")과
+   긴 라벨("CTI 호전환 재접속")이 뒤섞인 이 플라이아웃에서는 칸마다 폭이 들쭉날쭉해
+   보였다. "..." 말줄임은 쓰지 않는다 — "CTI 호전환"/"CTI 호전환 완료"/"CTI 호전환
+   재접속"처럼 접두어가 같은 라벨들이 전부 "CTI 호전환..."로 뭉개져 구분이 안 됐다.
+   대신 --ribbon-insert-col-width(RibbonMenu.jsx의 measureWidestLabelWidth가 그
+   카테고리에서 가장 긴 라벨의 실제 렌더링 폭을 재서 꽂아준다)로 칸 폭 자체를 넓혀서
+   모든 라벨이 한 줄로 잘리지 않고 다 보이게 한다. */
+.ribbon-insert-flyout-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--ribbon-insert-col-width, 68px));
+  justify-content: start;
+  gap: 6px;
+  overflow-y: auto;
+  padding-top: 2px;
+}
+
+.ribbon-insert-flyout-list .ribbon-button {
+  width: var(--ribbon-insert-col-width, 68px);
+  min-width: 0;
+}
+
+.ribbon-insert-flyout-list .ribbon-button-label {
+  white-space: nowrap;
+}
+
+.ribbon-insert-flyout-empty {
+  padding: 12px 4px;
+  font-size: 12px;
+  color: #a39d92;
+  text-align: center;
+  width: 100%;
+}

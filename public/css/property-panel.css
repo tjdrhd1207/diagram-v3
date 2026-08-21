@@ -1,12 +1,30 @@
+/* "Accent Rail" 디자인 — 리본/캔버스와 같은 그룹 색상 체계(--group-color,
+   --group-color-bg, groupColors.js가 PropertyPanel.jsx에서 인라인으로 꽂아줌)를
+   재사용해서, 지금 선택한 블록의 카테고리 색이 패널 왼쪽 띠·강조 텍스트·포커스
+   테두리·설명 말풍선에 그대로 번진다. 그룹이 없는 노드는 --group-color가 안
+   꽂히므로 아래 모든 var()의 폴백 색(#1a5fb4, 앱 전역에서 이미 쓰는 링크 블루)으로
+   조용히 대체된다. */
+
 .property-panel {
   width: 280px;
   flex-shrink: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   background: #ffffff;
   border-left: 1px solid #d0cfce;
   font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif;
   overflow-y: auto;
+}
+
+.property-panel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--group-color, #1a5fb4);
 }
 
 .property-panel-empty {
@@ -16,64 +34,104 @@
 }
 
 .property-panel-header {
-  padding: 12px 14px;
-  background: #f3f2f1;
+  padding: 16px 14px 14px 18px;
   border-bottom: 1px solid #e5e4e3;
 }
 
-.property-panel-title {
-  font-size: 14px;
+.property-panel-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--group-color, #1a5fb4);
+  margin-bottom: 6px;
+}
+
+.property-panel-eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--group-color, #1a5fb4);
+  flex-shrink: 0;
+}
+
+.property-panel-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: #2b2a28;
 }
 
 .property-panel-subtitle {
   font-size: 11px;
-  color: #79776f;
+  color: #a39d92;
   font-family: 'SFMono-Regular', Consolas, monospace;
   margin-top: 2px;
 }
 
 .property-panel-body {
-  padding: 12px 14px;
+  padding: 14px 14px 18px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 
 .property-panel-section-title {
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #79776f;
-  border-bottom: 1px solid #e5e4e3;
-  padding-bottom: 4px;
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a39d92;
 }
 
 .property-panel-description {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #e5e4e3;
-  font-size: 11px;
-  color: #79776f;
-  line-height: 1.5;
+  margin-top: 4px;
+  display: flex;
+  gap: 9px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--group-color, #1a5fb4) 8%, white);
+  border: 1px solid color-mix(in srgb, var(--group-color, #1a5fb4) 22%, white);
+  font-size: 12px;
+  line-height: 1.55;
+  color: #423f3a;
+}
+
+.property-panel-description-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--group-color, #1a5fb4);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  font-style: normal;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .property-field {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
   font-size: 12px;
 }
 
 .property-field-label {
-  color: #444341;
-  font-weight: 500;
+  color: #524f49;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .property-field-required {
-  color: #c0392b;
-  margin-left: 2px;
+  color: var(--group-color, #1a5fb4);
+  margin-left: 3px;
 }
 
 .property-field.is-empty input,
@@ -82,15 +140,34 @@
   background: #fdf3f3;
 }
 
+/* 박스 대신 밑줄만 — 종이 위에 바로 쓰는 느낌으로 가볍게. */
 .property-field input[type='text'],
 .property-field input[type='number'],
 .property-field select,
 .property-field textarea {
-  padding: 5px 7px;
-  border: 1px solid #d0cfce;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 5px 2px;
+  border: none;
+  border-bottom: 1.5px solid #e2ddd7;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
   font-family: inherit;
+  color: #2b2a28;
+  transition: border-color 0.15s ease;
+}
+
+.property-field.is-empty input,
+.property-field.is-empty select {
+  border-radius: 4px;
+  border-bottom-width: 1px;
+}
+
+.property-field input[type='text']:focus,
+.property-field input[type='number']:focus,
+.property-field select:focus,
+.property-field textarea:focus {
+  outline: none;
+  border-bottom-color: var(--group-color, #1a5fb4);
 }
 
 .property-field textarea {
@@ -98,9 +175,10 @@
 }
 
 .property-field input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   align-self: flex-start;
+  accent-color: var(--group-color, #1a5fb4);
 }
 
 .property-field-script-button {
@@ -116,6 +194,37 @@
 }
 
 .property-field-script-button:hover {
-  background: #eef4fc;
-  border-color: #9dbde0;
+  background: color-mix(in srgb, var(--group-color, #1a5fb4) 10%, white);
+  border-color: color-mix(in srgb, var(--group-color, #1a5fb4) 40%, white);
+}
+
+/* 필드 바로 아래 인라인 설명 — .property-panel-description(노드 레벨, 패널
+   맨 아래 고정)과 시각적으로는 비슷하지만 훨씬 작고, 지금 포커스된 필드
+   바로 밑에만 나타났다 사라진다(다른 필드로 포커스가 옮겨가면 교체). */
+.property-field-description {
+  display: flex;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--group-color, #1a5fb4) 8%, white);
+  border: 1px solid color-mix(in srgb, var(--group-color, #1a5fb4) 20%, white);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #59564f;
+}
+
+.property-field-description-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--group-color, #1a5fb4);
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  font-style: normal;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
