@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useId, useRef, useState } from 'react';
 import { Diagram } from '../lib/diagram-library.js';
 import LinkEventPicker from './LinkEventPicker.jsx';
+import { useStylesheet } from '../lib/useStylesheet.js';
 import { buildGroupColorPallete, paletteKeyForGroup } from '../lib/groupColors.js';
 import {
   createGroup,
@@ -10,6 +11,7 @@ import {
   rehydrateGroupsAfterDeserialize,
   reconcileGroupBounds,
 } from '../lib/blockGrouping.js';
+import { syncLinkOverlapBadges } from '../lib/linkOverlap.js';
 
 // createNode()가 막 만든 블록은 diagram.components에 diagram.nextSeq-1 아이디로
 // 곧바로 등록돼 있다 (Component 생성자가 동기적으로 등록함) — onNodeCreated는
@@ -73,6 +75,8 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
   { meta, options = {}, onSelectionChange, onSelectedBlockChange, onInsertModeConsumed, className, initialXml, onLoadError },
   forwardedRef
 ) {
+  useStylesheet('/css/link-overlap.css');
+
   const rawId = useId().replace(/:/g, '');
   const svgId = `diagram-canvas-${rawId}`;
   const diagramInstanceRef = useRef(null);
@@ -227,6 +231,11 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
     // 테두리를 복원한다. 새 빈 캔버스에서는 앵커 블록이 하나도 없으므로 그냥 no-op.
     rehydrateGroupsAfterDeserialize(diagram);
 
+    // 같은 두 블록 사이에 origin/dest anchor가 완전히 같은 링크가 여러 개 있으면
+    // 좌표가 100% 겹쳐서 라벨이 뭉개져 보인다(실제 운영 파일에서 흔함) — 개수 배지로
+    // 대체하고, 최초 로드 시 한 번 계산해둔다. 이후 갱신은 아래 mouseup 등에서.
+    syncLinkOverlapBadges(diagram);
+
     // 멤버 블록을 라이브러리의 기본 드래그(mousedown on .draggable -> dragStart ->
     // mousemove로 이동)로 옮기는 동안, 그 블록이 그룹에 속해 있으면 경계 사각형 밖으로
     // 못 나가게 보정한다. svg 생성 시점에 이미 등록된 라이브러리 자신의 mousemove
@@ -235,7 +244,12 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
     diagram.svg.addEventListener('mousemove', () => {
       if (diagram.dragStart) reconcileGroupBounds(diagram);
     });
-    diagram.svg.addEventListener('mouseup', () => reconcileGroupBounds(diagram));
+    diagram.svg.addEventListener('mouseup', () => {
+      reconcileGroupBounds(diagram);
+      // 블록 드래그로 anchor 위치가 바뀌었거나, 드래그로 새 링크를 막 연결한
+      // 직후(Anchor의 mouseup) 둘 다 여기서 잡힌다 — 겹침 배지를 다시 계산.
+      syncLinkOverlapBadges(diagram);
+    });
 
     if (import.meta.env.DEV) {
       // 개발 중 콘솔/테스트 스크립트에서 diagram.serialize()/deserialize() 등을
@@ -285,11 +299,22 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
       }
     },
 
-    undo: () => diagramInstanceRef.current?.undo(),
-    redo: () => diagramInstanceRef.current?.redo(),
+    // undo/redo/paste는 마우스업 없이도 링크를 추가/삭제할 수 있는 경로라(버튼
+    // 클릭, 키보드), 겹침 배지도 그때그때 다시 계산해줘야 한다.
+    undo: () => {
+      diagramInstanceRef.current?.undo();
+      if (diagramInstanceRef.current) syncLinkOverlapBadges(diagramInstanceRef.current);
+    },
+    redo: () => {
+      diagramInstanceRef.current?.redo();
+      if (diagramInstanceRef.current) syncLinkOverlapBadges(diagramInstanceRef.current);
+    },
     copy: () => diagramInstanceRef.current?.copy(),
     cut: () => diagramInstanceRef.current?.cut(),
-    paste: () => diagramInstanceRef.current?.paste(),
+    paste: () => {
+      diagramInstanceRef.current?.paste();
+      if (diagramInstanceRef.current) syncLinkOverlapBadges(diagramInstanceRef.current);
+    },
     remove: () => {
       const diagram = diagramInstanceRef.current;
       if (!diagram) return;
@@ -311,6 +336,7 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
       selectedItemsRef.current.clear();
       latestOnSelectionChangeRef.current?.(0);
       latestOnSelectedBlockChangeRef.current?.(null);
+      syncLinkOverlapBadges(diagram);
     },
     selectAll: () => diagramInstanceRef.current?.selectAll(),
     unselectAll: () => diagramInstanceRef.current?.unselectAll(),

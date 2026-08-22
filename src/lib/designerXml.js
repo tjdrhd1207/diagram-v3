@@ -20,7 +20,11 @@ import { NodeWrapper } from './diagram-library.js';
  *       </Node>
  *     </Nodes>
  *     <Links>
- *       <Link><Text>true</Text><Origin Id="4".../><Destination Id="3".../></Link>
+ *       <Link>
+ *         <Text>true</Text>
+ *         <Origin Id="4".../><OriginAnchor>3</OriginAnchor>
+ *         <Destination Id="3".../><DestinationAnchor>1</DestinationAnchor>
+ *       </Link>
  *     </Links>
  *   </Diagram>
  *
@@ -32,6 +36,11 @@ import { NodeWrapper } from './diagram-library.js';
  *   SwitchNode/PromptASRNode 같은 "동적 분기" 타입도 예외가 아니다(123.dxml의
  *   <switch> 블록을 직접 확인: 다른 노드와 동일한 평범한 <choice> 형제 구조였다).
  *   그래서 모든 노드 타입을 완전히 동일한 알고리즘으로 처리할 수 있다.
+ * - OriginAnchor/DestinationAnchor(0=왼쪽, 1=위, 2=오른쪽, 3=아래)는 diagram-library.js의
+ *   convertAnchorPosition이 정확히 같은 숫자 체계를 쓰므로, choice의 svg-origin-anchor/
+ *   svg-dest-anchor 속성에 변환 없이 그대로 옮긴다. 처음엔 이 값을 안 옮겼는데, 그러면
+ *   Link.deserialize()가 항상 convertAnchorPosition.default(오른쪽)로 폴백해서 모든
+ *   링크가 양쪽 다 오른쪽 anchor에만 몰려 붙는 문제가 있었다(실제로 겪고 확인한 버그).
  *
  * 프로퍼티 매핑 (designer.meta.json 전수 조사로 확정된 buildDataType 3가지 케이스):
  * - 기본(필드 없음): buildTag 엘리먼트의 속성으로 씀.
@@ -152,6 +161,12 @@ export function convertDesignerXmlToScenarioXml(xmlText, meta) {
         const originId = linkEl.querySelector('Origin')?.getAttribute('Id');
         const destId = linkEl.querySelector('Destination')?.getAttribute('Id');
         const eventName = directChildText(linkEl, 'Text') ?? '';
+        // 0=왼쪽, 1=위, 2=오른쪽, 3=아래 — diagram-library.js의 convertAnchorPosition이
+        // 정확히 같은 숫자 체계를 쓰기 때문에 변환 없이 그대로 옮기면 된다. 이 값을
+        // 안 옮기면 Link.deserialize()가 항상 convertAnchorPosition.default(오른쪽)로
+        // 폴백해서 모든 링크가 오른쪽 anchor에만 몰려 붙는다(실제로 겪은 증상).
+        const originAnchor = directChildText(linkEl, 'OriginAnchor');
+        const destAnchor = directChildText(linkEl, 'DestinationAnchor');
 
         const originInfo = nodeById.get(originId);
         const destInfo = nodeById.get(destId);
@@ -162,6 +177,8 @@ export function convertDesignerXmlToScenarioXml(xmlText, meta) {
 
         const choiceEl = originBlockEl.appendChild('choice');
         choiceEl.attr('event', eventName);
+        if (originAnchor !== null) choiceEl.attr('svg-origin-anchor', originAnchor);
+        if (destAnchor !== null) choiceEl.attr('svg-dest-anchor', destAnchor);
         choiceEl.attr('target', destInfo.sequence);
     }
 
