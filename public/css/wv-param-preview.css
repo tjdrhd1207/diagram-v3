@@ -1,0 +1,232 @@
+.wv-preview-pane {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid #e5e4e3;
+  background: #f8f7f6;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wv-preview-toolbar {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e4e3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #ffffff;
+}
+
+.wv-preview-run {
+  align-self: flex-start;
+  padding: 5px 10px;
+  border: 1px solid #1a5fb4;
+  border-radius: 4px;
+  background: #1a5fb4;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wv-preview-run:hover {
+  background: #164e94;
+}
+
+.wv-preview-hint {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #a39d92;
+}
+
+.wv-preview-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.wv-preview-error {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fdf3f3;
+  border: 1px solid #e0a1a1;
+  color: #a33a3a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wv-preview-empty {
+  padding: 16px 8px;
+  font-size: 12px;
+  color: #a39d92;
+  text-align: center;
+}
+
+/* 폰 목업 — 모달 안 좁은 패널에 맞춘 축소판. */
+.wv-phone {
+  width: 260px;
+  border-radius: 20px;
+  background: #000000;
+  padding: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+
+.wv-phone-screen {
+  background: #f4f6f9;
+  border-radius: 13px;
+  padding: 14px 12px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  color: #1b2430;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wv-el-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wv-el-text {
+  font-size: 11.5px;
+}
+
+.wv-el-image {
+  padding: 20px 0;
+  border-radius: 8px;
+  background: #e2e6ec;
+  color: #7c8798;
+  text-align: center;
+  font-size: 11px;
+}
+
+.wv-el-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wv-el-step-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.wv-el-step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e2e6ec;
+}
+
+.wv-el-step-dot.is-active {
+  background: #2f6fed;
+}
+
+.wv-el-step-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #122340;
+}
+
+.wv-el-strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wv-el-question {
+  background: #ffffff;
+  border: 1px solid #e2e6ec;
+  border-radius: 10px;
+  padding: 10px 10px 8px;
+}
+
+.wv-el-question-page {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #2f6fed;
+  margin-bottom: 4px;
+}
+
+.wv-el-question-text {
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.wv-el-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid #e2e6ec;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.wv-el-option-num {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid #7c8798;
+  color: #7c8798;
+  font-size: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wv-el-message {
+  padding: 10px;
+  border-radius: 8px;
+  background: #eef1f6;
+  font-size: 11px;
+}
+
+.wv-phone-footer {
+  display: flex;
+  gap: 6px;
+  padding: 10px 4px 2px;
+}
+
+.wv-phone-btn {
+  flex: 1;
+  padding: 8px 4px;
+  border: none;
+  border-radius: 8px;
+  background: #2f6fed;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.wv-preview-info {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #eae9e8;
+  font-size: 10.5px;
+  color: #625f59;
+}
+
+.wv-preview-info-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.wv-preview-info-line {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  word-break: break-all;
+}
