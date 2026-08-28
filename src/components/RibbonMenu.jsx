@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStylesheet } from '../lib/useStylesheet.js';
 import { groupColorStyle } from '../lib/groupColors.js';
 import { isGroupFace } from '../lib/blockGrouping.js';
+import { getFavorites, addFavorite, removeFavorite, MAX_FAVORITES } from '../lib/insertFavorites.js';
 
 
 const TABS = ['홈', '삽입', '정렬', '보기', '파일'];
@@ -41,6 +42,18 @@ export default function RibbonMenu({
   const canAlign = selectedCount >= 2;
   const canGroup = selectedCount >= 2;
   const isFaceSelected = selectedCount === 1 && isGroupFace(selectedBlock);
+
+  // 즐겨찾기가 꽉 찼을 때("먼저 하나를 빼주세요") 같은, 리본 전체에 걸친 짧은
+  // 안내를 위한 토스트 — 특정 플라이아웃 안에 넣으면 그 플라이아웃이 닫힐 때
+  // 같이 사라져 버려서(예: 추가 팝오버를 닫자마자 안내가 뜬 경우) 리본 최상단에서
+  // 관리한다.
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  const showToast = (message) => setToast({ message, key: Date.now() });
 
   const call = (method, ...args) => diagramRef.current?.[method]?.(...args);
 
@@ -94,11 +107,19 @@ export default function RibbonMenu({
         )}
 
         {activeTab === '삽입' && (
-          <InsertCategoryRow
-            meta={meta}
-            activeInsertNode={activeInsertNode}
-            onPickNode={(nodeName) => handleInsertClick(nodeName)}
-          />
+          <div className="ribbon-insert-tab">
+            <FavoritesRow
+              meta={meta}
+              activeInsertNode={activeInsertNode}
+              onPickNode={(nodeName) => handleInsertClick(nodeName)}
+              onFavoritesFull={() => showToast(`즐겨찾기는 최대 ${MAX_FAVORITES}개까지예요. 먼저 하나를 빼주세요.`)}
+            />
+            <InsertCategoryRow
+              meta={meta}
+              activeInsertNode={activeInsertNode}
+              onPickNode={(nodeName) => handleInsertClick(nodeName)}
+            />
+          </div>
         )}
 
         {activeTab === '정렬' && (
@@ -138,6 +159,12 @@ export default function RibbonMenu({
           </>
         )}
       </div>
+
+      {toast && (
+        <div className="ribbon-toast" key={toast.key}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
@@ -155,6 +182,154 @@ function groupNodesByCategory(nodes) {
     (byGroup[groupName] ??= []).push([nodeName, def]);
   }
   return byGroup;
+}
+
+// 사용 빈도를 자동으로 재는 게 아니라, 사용자가 "+"로 직접 등록하고 "×"로 직접
+// 빼는 수동 즐겨찾기(최대 8개, insertFavorites.js) — 카테고리 플라이아웃 뒤에
+// 숨기면 "찾아 들어가는" 단계가 하나 더 생겨서 애초 목적(찾으러 갈 필요 없게)에
+// 안 맞으므로, 카테고리 버튼 줄과 별도로 항상 펼쳐진 채로 보여준다. "+"를 눌렀을
+// 때만 추가용 팝오버가 뜬다.
+function FavoritesRow({ meta, activeInsertNode, onPickNode, onFavoritesFull }) {
+  const [favorites, setFavorites] = useState(() => getFavorites());
+  const [showAdd, setShowAdd] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!showAdd) return undefined;
+    const handleOutsideClick = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setShowAdd(false);
+      }
+    };
+    // 캡처 단계에서 감지한다 — 캔버스의 Anchor(연결점)는 mousedown에서
+    // e.stopPropagation()을 호출해서(diagram-library.js) 버블 단계 리스너로는
+    // 그 지점을 클릭했을 때 감지가 안 된다. 캡처는 버블보다 먼저(대상까지
+    // 내려가는 길에) 실행되므로 그 stopPropagation보다 앞서 걸린다.
+    document.addEventListener('mousedown', handleOutsideClick, true);
+    return () => document.removeEventListener('mousedown', handleOutsideClick, true);
+  }, [showAdd]);
+
+  // meta가 나중에 바뀌어 즐겨찾기해둔 타입이 사라졌으면 조용히 걸러낸다(방어적 —
+  // designer.meta.json이 바뀌는 일은 거의 없지만, 있다면 죽는 것보단 낫다).
+  const entries = favorites
+    .map((nodeName) => [nodeName, meta?.nodes?.[nodeName]])
+    .filter(([, def]) => !!def);
+
+  return (
+    <div className="ribbon-favorites-row" ref={containerRef}>
+      {entries.length === 0 && (
+        <div className="ribbon-favorites-empty">자주 쓰는 블록을 "+"로 등록해두면 여기서 바로 꺼내 쓸 수 있어요.</div>
+      )}
+      {entries.map(([nodeName, def]) => (
+        <div className="ribbon-favorite-tile" key={nodeName} style={groupColorStyle(def.group)}>
+          <RibbonButton
+            icon={def.icon}
+            label={def.displayName ?? nodeName}
+            active={activeInsertNode === nodeName}
+            onClick={() => onPickNode(nodeName)}
+          />
+          <button
+            type="button"
+            className="ribbon-favorite-remove"
+            title="즐겨찾기에서 빼기"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFavorites(removeFavorite(nodeName));
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+
+      <div className="ribbon-favorite-add-wrap">
+        <button
+          type="button"
+          className={`ribbon-favorite-add ${showAdd ? 'is-open' : ''}`}
+          onClick={() => setShowAdd((v) => !v)}
+          title="즐겨찾기에 블록 추가"
+        >
+          +
+        </button>
+        {showAdd && (
+          <AddFavoriteFlyout
+            meta={meta}
+            existingFavorites={favorites}
+            onAdd={(nodeName) => {
+              const result = addFavorite(nodeName);
+              if (result.ok) {
+                setFavorites(result.list);
+              } else if (result.reason === 'full') {
+                onFavoritesFull?.();
+              }
+              // duplicate 케이스는 팝오버에서 이미 비활성으로 보여줘서 사실상
+              // 못 누르지만, 혹시 몰라 조용히 무시(별도 처리 불필요).
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// "+" 눌렀을 때 뜨는 추가용 팝오버 — InsertCategoryFlyout과 달리 카테고리 구분
+// 없이 전체 노드를 한 검색창에서 찾는다(즐겨찾기는 카테고리를 안 따지므로).
+// 이미 즐겨찾기된 항목은 눌러도 소용없으니 체크 표시 후 비활성화해서
+// LinkEventPicker의 "사용됨" 처리와 같은 톤으로 알려준다.
+function AddFavoriteFlyout({ meta, existingFavorites, onAdd }) {
+  const [query, setQuery] = useState('');
+
+  const allEntries = useMemo(() => Object.values(groupNodesByCategory(meta?.nodes)).flat(), [meta]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allEntries;
+    return allEntries.filter(
+      ([nodeName, def]) =>
+        (def.displayName ?? nodeName).toLowerCase().includes(q) || nodeName.toLowerCase().includes(q)
+    );
+  }, [allEntries, query]);
+
+  const columnWidth = useMemo(() => measureWidestLabelWidth(allEntries), [allEntries]);
+  const flyoutWidth = useMemo(() => {
+    const columns = Math.max(1, Math.min(4, allEntries.length));
+    const gaps = (columns - 1) * 6;
+    const horizontalPadding = 20;
+    return Math.min(480, columns * columnWidth + gaps + horizontalPadding);
+  }, [allEntries, columnWidth]);
+
+  return (
+    <div
+      className="ribbon-insert-flyout ribbon-favorite-add-flyout"
+      style={{ '--ribbon-insert-col-width': `${columnWidth}px`, width: `${flyoutWidth}px` }}
+    >
+      <input
+        className="ribbon-insert-flyout-search"
+        type="text"
+        placeholder="추가할 블록 검색..."
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <div className="ribbon-insert-flyout-hint">클릭하면 즐겨찾기에 추가됩니다</div>
+      <div className="ribbon-insert-flyout-list">
+        {filtered.length === 0 && <div className="ribbon-insert-flyout-empty">검색 결과가 없습니다.</div>}
+        {filtered.map(([nodeName, def]) => {
+          const already = existingFavorites.includes(nodeName);
+          return (
+            <RibbonButton
+              key={nodeName}
+              icon={def.icon}
+              label={(def.displayName ?? nodeName) + (already ? ' ✓' : '')}
+              disabled={already}
+              onClick={() => onAdd(nodeName)}
+              style={groupColorStyle(def.group)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // "삽입" 탭 전용 — 66종 노드를 리본에 전부 펼치면 화면 절반 가까이 차지해서(사용자
@@ -308,7 +483,7 @@ function RibbonGroup({ label, children, style }) {
 // we don't have those asset files in this scaffold. Rather than render a
 // broken <img>, fall back to the node's initial as a placeholder badge.
 // Swap this for a real <img src={`/${icon}`} /> once the icon set exists.
-function RibbonButton({ icon, label, onClick, disabled, active }) {
+function RibbonButton({ icon, label, onClick, disabled, active, style }) {
   const isAssetPath = typeof icon === 'string' && icon.includes('/');
   return (
     <button
@@ -316,7 +491,8 @@ function RibbonButton({ icon, label, onClick, disabled, active }) {
       onClick={onClick}
       disabled={disabled}
       title={label}
-      aria-pressed={active || undefined}  
+      aria-pressed={active || undefined}
+      style={style}
     >
       <span className="ribbon-button-icon" aria-hidden="true">
         {isAssetPath ? (
