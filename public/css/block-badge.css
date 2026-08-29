@@ -1,0 +1,9 @@
+/* 리본 "보기" 탭의 "아이콘 배지" 토글 — 실사용 블록 도형(Rectangle2Block/
+   CircleBlock2/DiamondBlock2/CustomBlock)이 전부 classPrefix='hd-block2'를
+   공유해서 iconArea가 하나같이 .hd-block2-iconarea로 잡힌다(diagram-library.js
+   확인) — 그래서 이 클래스 하나로 도형 종류와 무관하게 전체 배지를 가릴 수 있다.
+   iconArea 배경색은 JS가 인라인 스타일로 칠하므로(Block#setColor 등) 이걸
+   이기려면 !important가 필요하다. */
+.badges-off .hd-block2-iconarea {
+  background-color: transparent !important;
+}

@@ -1,5 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-music-note-beamed" viewBox="0 0 16 16">
-  <path d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.896 2.5 2m9-2c0 1.105-1.12 2-2.5 2s-2.5-.895-2.5-2 1.12-2 2.5-2 2.5.895 2.5 2"/>
-  <path fill-rule="evenodd" d="M14 11V2h1v9zM6 3v10H5V3z"/>
-  <path d="M5 2.905a1 1 0 0 1 .9-.995l8-.8a1 1 0 0 1 1.1.995V3L5 4z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#a24b0e"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="0.3" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <g style="filter:drop-shadow(0 0.6px 1px rgba(0,0,0,0.35))">
+    <path fill="url(#body)" stroke="#572808" stroke-width="0.4" stroke-linejoin="round" d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.896 2.5 2m9-2c0 1.105-1.12 2-2.5 2s-2.5-.895-2.5-2 1.12-2 2.5-2 2.5.895 2.5 2"/>
+    <path fill="url(#body)" stroke="#572808" stroke-width="0.4" stroke-linejoin="round" fill-rule="evenodd" d="M14 11V2h1v9zM6 3v10H5V3z"/>
+    <path fill="url(#body)" stroke="#572808" stroke-width="0.4" stroke-linejoin="round" d="M5 2.905a1 1 0 0 1 .9-.995l8-.8a1 1 0 0 1 1.1.995V3L5 4z"/>
+    <path fill="url(#sheen)" d="M6 13c0 1.105-1.12 2-2.5 2S1 14.105 1 13s1.12-2 2.5-2 2.5.896 2.5 2m9-2c0 1.105-1.12 2-2.5 2s-2.5-.895-2.5-2 1.12-2 2.5-2 2.5.895 2.5 2"/>
+    <path fill="url(#sheen)" fill-rule="evenodd" d="M14 11V2h1v9zM6 3v10H5V3z"/>
+    <path fill="url(#sheen)" d="M5 2.905a1 1 0 0 1 .9-.995l8-.8a1 1 0 0 1 1.1.995V3L5 4z"/>
+  </g>
 </svg>

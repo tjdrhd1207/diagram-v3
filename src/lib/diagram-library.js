@@ -331,12 +331,12 @@ let STYLE_TEXT = `
     }
     .hd-block2 {
         fill: #ededed;
-        stroke: #888888;
+        stroke: #b9b9b9;
         stroke-width: 1;
         /* https://developer.mozilla.org/en-US/docs/Web/CSS/filter-function/drop-shadow
         * length(우측으로이동) length(아래로이동) blur크기 blur세기
         */
-        filter: drop-shadow(2px 2px 8px rgba(0, 0, 0, 0.5));
+        filter: drop-shadow(1px 1px 5px rgba(0, 0, 0, 0.5));
     }
     .hd-block2-iconarea {
         background-color: #ababab;

@@ -12,6 +12,8 @@ import {
   reconcileGroupBounds,
 } from '../lib/blockGrouping.js';
 import { syncLinkOverlapBadges } from '../lib/linkOverlap.js';
+import { relaxOverlappingBlocks } from '../lib/blockSpacing.js';
+import { getIconBadgesVisible, setIconBadgesVisible as persistIconBadgesVisible } from '../lib/iconBadgePref.js';
 
 // createNode()가 막 만든 블록은 diagram.components에 diagram.nextSeq-1 아이디로
 // 곧바로 등록돼 있다 (Component 생성자가 동기적으로 등록함) — onNodeCreated는
@@ -26,6 +28,25 @@ function applyGroupColorToNewestBlock(diagram, meta, nodeName) {
   const block = diagram.components.get(newestId);
   if (!block || typeof block.setColor !== 'function') return;
   block.setColor(paletteKeyForGroup(group, 'bg'), paletteKeyForGroup(group, 'icon'));
+}
+
+// designerXml.js(레거시 ScenarioDesigner .xml/.prj 임포터)는 group 개념 자체를
+// 몰라서 변환된 <block>에 bg-color/icon-color 속성을 전혀 안 남긴다 — 그래서
+// Block.deserialize()가 둘 다 null로 읽어 shapeElement.style.fill/iconArea의
+// backgroundColor에 null을 대입하게 되고(사실상 무색), "프로젝트 열기"로 실제
+// 파일을 불러오면 블록이 아예 색이 하나도 안 입혀진 채로 보이는 버그가 있었다.
+// 이 앱이 직접 저장했다가 다시 불러온 파일은 bg-color가 이미 실제 hex로 채워져
+// 있으므로(serialize() 시점에 shapeElement.style.fill을 그대로 적어둠) 그런
+// 블록까지 덮어쓰지 않도록, fill이 비어있는 블록에 한해서만 그룹 색을 새로
+// 입혀준다.
+function backfillMissingBlockColors(diagram, meta) {
+  if (!diagram) return;
+  for (const component of diagram.components.values()) {
+    if (typeof component.setColor !== 'function') continue;
+    if (component.shapeElement?.style?.fill) continue;
+    const group = meta?.nodes?.[component.metaName]?.group;
+    component.setColor(paletteKeyForGroup(group, 'bg'), paletteKeyForGroup(group, 'icon'));
+  }
 }
 
 // Block.deserialize()는 diagram.meta.nodes[metaName]를 가드 없이 바로 읽고 그
@@ -76,6 +97,7 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
   forwardedRef
 ) {
   useStylesheet('/css/link-overlap.css');
+  useStylesheet('/css/block-badge.css');
 
   const rawId = useId().replace(/:/g, '');
   const svgId = `diagram-canvas-${rawId}`;
@@ -227,9 +249,29 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
 
     diagramInstanceRef.current = diagram;
 
+    // 레거시 디자이너 XML을 변환해 불러온 블록은 bg-color/icon-color가 아예
+    // 없어서(위 backfillMissingBlockColors 주석 참고) 그대로 두면 무색으로
+    // 보인다 — 그룹 색이 이미 있는 블록(이 앱이 저장한 파일)은 건드리지 않고,
+    // 비어있는 블록에만 그룹 색을 채워 넣는다.
+    backfillMissingBlockColors(diagram, meta);
+
+    // 아이콘 배지 on/off는 시나리오 파일과 무관한 개인 UI 취향(localStorage,
+    // iconBadgePref.js)이라, 새로 만들어지는 캔버스마다 마지막으로 저장된 값을
+    // 그대로 적용해준다 — CSS 클래스 하나로 전체 배지를 가리는 방식이라
+    // 도형 종류(Rectangle2Block/CircleBlock2/DiamondBlock2)를 몰라도 된다.
+    diagram.svg.classList.toggle('badges-off', !getIconBadgesVisible());
+
     // 파일에서 불러온 경우 그룹 앵커들의 userData로부터 diagram.groups 런타임 캐시와
     // 테두리를 복원한다. 새 빈 캔버스에서는 앵커 블록이 하나도 없으므로 그냥 no-op.
+    // relaxOverlappingBlocks가 그룹 멤버를 건너뛰려면 이 캐시가 먼저 채워져
+    // 있어야 하므로 반드시 그 앞에 호출한다.
     rehydrateGroupsAfterDeserialize(diagram);
+
+    // 원본 배치는 그대로 두고, 실제로 겹치거나 너무 붙어있는 블록/메모끼리만
+    // 살살 벌려준다(그래프 구조를 새로 짜는 무거운 자동 정렬과는 다른, 가벼운
+    // 보정 — 검토 문서 참고). 이동한 블록의 링크 좌표가 바뀔 수 있으므로 아래
+    // syncLinkOverlapBadges보다 먼저 실행한다.
+    relaxOverlappingBlocks(diagram);
 
     // 같은 두 블록 사이에 origin/dest anchor가 완전히 같은 링크가 여러 개 있으면
     // 좌표가 100% 겹쳐서 라벨이 뭉개져 보인다(실제 운영 파일에서 흔함) — 개수 배지로
@@ -364,6 +406,11 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
     zoomIn: () => diagramInstanceRef.current?.zoomIn(),
     zoomOut: () => diagramInstanceRef.current?.zoomOut(),
     zoomReset: () => diagramInstanceRef.current?.zoomReset(),
+
+    setIconBadgesVisible: (visible) => {
+      persistIconBadgesVisible(visible);
+      diagramInstanceRef.current?.svg?.classList.toggle('badges-off', !visible);
+    },
 
     downloadImage: () => diagramInstanceRef.current?.downloadImage(),
     printImage: () => diagramInstanceRef.current?.printImage(),

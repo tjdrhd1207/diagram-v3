@@ -3,6 +3,7 @@ import { useStylesheet } from '../lib/useStylesheet.js';
 import { groupColorStyle } from '../lib/groupColors.js';
 import { isGroupFace } from '../lib/blockGrouping.js';
 import { getFavorites, addFavorite, removeFavorite, MAX_FAVORITES } from '../lib/insertFavorites.js';
+import { getIconBadgesVisible } from '../lib/iconBadgePref.js';
 
 
 const TABS = ['홈', '삽입', '정렬', '보기', '파일'];
@@ -39,6 +40,7 @@ export default function RibbonMenu({
 
   const [activeTab, setActiveTab] = useState('홈');
   const [clickedButton, setClickedButton] = useState(null);
+  const [showIconBadges, setShowIconBadges] = useState(() => getIconBadgesVisible());
   const canAlign = selectedCount >= 2;
   const canGroup = selectedCount >= 2;
   const isFaceSelected = selectedCount === 1 && isGroupFace(selectedBlock);
@@ -137,11 +139,25 @@ export default function RibbonMenu({
         )}
 
         {activeTab === '보기' && (
-          <RibbonGroup label="확대/축소">
-            <RibbonButton icon="＋" label="확대" onClick={() => call('zoomIn')} />
-            <RibbonButton icon="－" label="축소" onClick={() => call('zoomOut')} />
-            <RibbonButton icon="⟲" label="100%" onClick={() => call('zoomReset')} />
-          </RibbonGroup>
+          <>
+            <RibbonGroup label="확대/축소">
+              <RibbonButton icon="＋" label="확대" onClick={() => call('zoomIn')} />
+              <RibbonButton icon="－" label="축소" onClick={() => call('zoomOut')} />
+              <RibbonButton icon="⟲" label="100%" onClick={() => call('zoomReset')} />
+            </RibbonGroup>
+            <RibbonGroup label="표시">
+              <RibbonButton
+                icon="🏷"
+                label="아이콘 배지"
+                active={showIconBadges}
+                onClick={() => {
+                  const next = !showIconBadges;
+                  setShowIconBadges(next);
+                  call('setIconBadgesVisible', next);
+                }}
+              />
+            </RibbonGroup>
+          </>
         )}
 
         {activeTab === '파일' && (
