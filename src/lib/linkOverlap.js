@@ -41,6 +41,10 @@ function computeOverlapGroups(diagram) {
     const groups = new Map();
     for (const component of diagram.components.values()) {
         if (component.type !== 'L') continue;
+        // 정상적인 링크라면 항상 있어야 하지만, 방어적으로 확인 — anchorFrom/
+        // anchorTo가 없는(다른 코드가 실수로 깨뜨린) 링크가 있어도 배지 계산
+        // 전체가 죽지 않도록 그 링크만 건너뛴다.
+        if (!component.blockOrigin || !component.blockDest || !component.anchorFrom || !component.anchorTo) continue;
         const key = `${component.blockOrigin.id}|${component.anchorFrom.position}|${component.blockDest.id}|${component.anchorTo.position}`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(component);
@@ -145,6 +149,24 @@ function positionBadge(record, cx, cy) {
     record.textElement.setAttribute('y', cy);
 }
 
+// 링크가 화면에 실제로 그려진 경로(shapeElement의 d)에서 중간 지점을 직접
+// 구한다 — 처음엔 link.shapePointElement의 cx/cy를 읽는 방식이었는데, 그건
+// Link.adjustPoints()가 lineType === NORMAL_DIAGRAM_TYPE일 때만 채워주는
+// 값이었다(diagram-library.js 확인). 이 앱은 실제로 CUSTOM_DIAGRAM_TYPE으로
+// 돌아가고 있어서(다른 문서 참고) shapePointElement가 단 한 번도 채워진 적이
+// 없었고, 그 결과 배지가 전부 좌표 (null → 사실상 0,0)에 겹쳐 그려지고
+// 있었다. getPointAtLength()는 lineType과 무관하게 항상 유효한 path만
+// 있으면 되므로, 어느 모드에서든 안전하게 링크의 실제 중간 지점을 구할 수
+// 있다.
+function linkMidpoint(link) {
+    const path = link.shapeElement;
+    if (!path || typeof path.getTotalLength !== 'function') return null;
+    const length = path.getTotalLength();
+    if (!length) return null;
+    const point = path.getPointAtLength(length / 2);
+    return { x: point.x, y: point.y };
+}
+
 function removeBadgeAndRestoreLabels(diagram, record) {
     if (openPopoverBadge === record.groupElement) closePopover();
     record.groupElement.remove();
@@ -181,9 +203,8 @@ export function syncLinkOverlapBadges(diagram) {
             link.textElement.style.display = 'none';
         }
 
-        const cx = links[0].shapePointElement.getAttribute('cx');
-        const cy = links[0].shapePointElement.getAttribute('cy');
-        positionBadge(record, cx, cy);
+        const mid = linkMidpoint(links[0]);
+        if (mid) positionBadge(record, mid.x, mid.y);
     }
 
     for (const [key, record] of registry) {

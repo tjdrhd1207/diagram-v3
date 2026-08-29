@@ -45,6 +45,10 @@ const MIN_DISTANCE = 40;
 const CUSTOM_BLOCK_MENU_WIDTH = 70;
 const CUSTOM_BLOCK_MENU_HEIGHT = 30;
 const CUSTOM_EVENT_HEIGHT = 25;
+// 이벤트 행이 이 개수를 넘으면 기본으로 접어서 "+N개 더보기" 요약 행 하나로
+// 보여준다 - 분기가 많은 블록(예: 33개짜리)이 세로로 한없이 길어지는 걸 막기
+// 위함. 실제 행 개수는 threshold-1개까지 보이고 나머지는 요약 행으로 뭉친다.
+const CUSTOM_EVENT_COLLAPSE_THRESHOLD = 8;
 const ANCHOR_RADIUS = 6;
 const CUSTOM_EVENT_BLOCK = 'customEventBlock';
 const CUSTOM_BLOCK = 'CustomBlock';
@@ -1612,8 +1616,21 @@ class Diagram {
                 moveY: link.moveY
             };
         } else if (e.target.dataset.type === 'addEvent' && e.buttons === MOUSE_BUTTON_PRIMARY) {
-            this.contextMenu = true;
-            this.loadContextMenu(e);
+            const block = this.components.get(e.target.dataset.id);
+            if (this.options.onCustomEventAdding) {
+                // 요청/응답 콜백 — onLinkCreating과 동일한 패턴. 여기서
+                // this.dialog/this.contextMenu(네이티브 목록 전용 상태)는
+                // 전혀 안 건드린다 - 이 경로는 React 쪽에서 완전히 별도로
+                // 그려주는 팝오버라서.
+                this.options.onCustomEventAdding(block, e, (command) => {
+                    if (command && command.trim()) {
+                        block.addEventRow(command.trim());
+                    }
+                });
+            } else {
+                this.contextMenu = true;
+                this.loadContextMenu(e);
+            }
         } else if (e.target.dataset.type === CUSTOM_EVENT_BLOCK && e.buttons === MOUSE_BUTTON_PRIMARY) {
             if (Number(e.target.dataset.linkId)) {
                 const linkId = e.target.dataset.linkId;
@@ -2151,11 +2168,15 @@ Diagram.defaultOptions = {
     onZoomed: null,
     onDiagramModified: null,
     onLinkCreating: null,
+    // onLinkCreating과 같은 성격(요청/응답 콜백) — CustomBlock의 "+" 버튼을
+    // 눌렀을 때 어떤 이벤트를 추가할지 물어본다. 등록 안 하면 기존
+    // loadContextMenu()(initArray 기반 네이티브 목록)로 그대로 폴백한다.
+    onCustomEventAdding: null,
     onNodeModifyingCaption: null,
     onNodeModifyingComment: null,
     useBackgroundPattern: false,
-    blockType: NORMAL_DIAGRAM_TYPE,
-    lineType: NORMAL_DIAGRAM_TYPE, // CUSTOM_DIAGRAM_TYPE : Custom블럭, NORMAL_DIAGRAM_TYPE : 일반블럭
+    blockType: CUSTOM_DIAGRAM_TYPE,
+    lineType: CUSTOM_DIAGRAM_TYPE, // CUSTOM_DIAGRAM_TYPE : Custom블럭, NORMAL_DIAGRAM_TYPE : 일반블럭
     moveUnit: 0,
     minimapQuerySelector: null,
     keyActions: {},
@@ -2408,6 +2429,7 @@ class ActionManager {
                 const customEventsHeight = block.eventElementArray.length * CUSTOM_EVENT_HEIGHT;
                 const eventBlock = new CustomEventBlock(block.diagram, id, event, block, CUSTOM_EVENT_BLOCK, block.x, block.y + block.h + customEventsHeight, block.w, CUSTOM_EVENT_HEIGHT);
                 block.eventElementArray.push(eventBlock);
+                block._syncEventVisibility();
             } else if (op === ActionManager.GROUP_ACTION) {
                 data.undo();
             }
@@ -2488,6 +2510,7 @@ class ActionManager {
                 const customEventBlock = new CustomEventBlock(block.diagram, newEventElement.id, newEventElement.event, block, CUSTOM_EVENT_BLOCK, block.x, block.y + block.h + customEventsHeight, block.w, CUSTOM_EVENT_HEIGHT);
                 block.eventElementArray.push(customEventBlock);
                 this.accumulatedHeight += CUSTOM_EVENT_HEIGHT;
+                block._syncEventVisibility();
             } else if (op === ActionManager.CUSTOM_EVENT_REMOVED) {
                 let { block, event } = data;
                 block.eventElementArray.forEach((item) => {
@@ -2940,9 +2963,24 @@ class Block extends ResizableComponent {
                 block = new CustomBlock(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, event, color);
             }
         } else if (shape === CIRCLE_BLOCK_SHAPE) {
-            block = new CircleBlock2(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, color);
+            // CUSTOM_DIAGRAM_TYPE에서는 원 모양 노드도 CustomBlock으로 만든다 —
+            // 그래야 이벤트 행/전용 anchor 혜택(링크 겹침 방지, LinkEventPicker)을
+            // 그대로 받는다. 원래 모양의 흔적은 위쪽 둥근 모서리로만 남긴다.
+            if (diagram.options.blockType === CUSTOM_DIAGRAM_TYPE) {
+                block = new CustomBlock(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, event, color, 'roundedTop');
+            } else {
+                block = new CircleBlock2(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, color);
+            }
         } else if (shape === DIAMOND_BLOCK_SHAPE) {
-            block = new DiamondBlock2(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, color);
+            // 다이아몬드(분기 노드: IfNode/SwitchNode)도 마찬가지 — 여기가 실제
+            // 데이터에서 링크 겹침이 가장 심했던 노드 타입이라(SwitchNode 51개),
+            // CustomBlock으로 바꾸는 효과가 제일 크다. 위쪽 모서리를 45도로 깎아
+            // 원래 다이아몬드였다는 힌트만 남긴다.
+            if (diagram.options.blockType === CUSTOM_DIAGRAM_TYPE) {
+                block = new CustomBlock(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, event, color, 'chamferedTop');
+            } else {
+                block = new DiamondBlock2(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, color);
+            }
         } else {
             throw new Error('Invalid shape: ' + shape);
         }
@@ -3061,6 +3099,10 @@ class Block extends ResizableComponent {
                 this.svg.removeChild(element.addActionArea);
                 element.anchors.remove();
             });
+        }
+        if (this.summaryRowShape) {
+            this.svg.removeChild(this.summaryRowShape);
+            this.svg.removeChild(this.summaryRowArea);
         }
         this.svg.removeChild(this.shapeElement);
         this.svg.removeChild(this.rootElement);
@@ -4309,8 +4351,26 @@ class DiamondBlock2 extends Block {
  * @param {number} y block y position
  * @returns {object} block object
  */
+// Circle/Diamond 모양 노드도 CUSTOM_DIAGRAM_TYPE에서는 CustomBlock으로 취급해서
+// (아래 Block.createInstance 참고) 이벤트 행/anchor 겹침 방지 혜택을 그대로
+// 받게 하되, 원래 모양의 흔적을 위쪽 모서리 처리로만 남긴다 — 아래쪽은 이벤트
+// 행이 맞닿아야 해서 항상 각지게 둔다. 'rect'(기본, 진짜 사각형 노드)는 이전과
+// 동일하게 <rect>를 쓰고, 그 외엔 <path>로 위쪽만 다르게 그린다.
+function buildCustomBlockShapeD(x, y, w, h, shapeStyle) {
+    const cut = Math.max(0, Math.min(16, w / 2, h / 2));
+    if (shapeStyle === 'roundedTop') {
+        // 원(Circle)이었던 노드 — 위쪽 두 모서리를 둥글게.
+        return `M${x},${y + cut} Q${x},${y} ${x + cut},${y} L${x + w - cut},${y} Q${x + w},${y} ${x + w},${y + cut} L${x + w},${y + h} L${x},${y + h} Z`;
+    }
+    if (shapeStyle === 'chamferedTop') {
+        // 다이아몬드였던 노드 — 위쪽 두 모서리를 45도로 깎아 팔각형의 윗부분처럼.
+        return `M${x},${y + cut} L${x + cut},${y} L${x + w - cut},${y} L${x + w},${y + cut} L${x + w},${y + h} L${x},${y + h} Z`;
+    }
+    return null;
+}
+
 class CustomBlock extends Block {
-    constructor(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, event, color) {
+    constructor(diagram, id, icon, metaName, caption, comment, x, y, w, h, userData, event, color, shapeStyle = 'rect') {
         super(diagram, id, icon, metaName, caption, comment, x, y,
             (w < BLOCK_RECT_DEFAULT_WIDTH ? BLOCK_RECT_DEFAULT_WIDTH : w), (h < BLOCK_RECT_DEFAULT_HEIGHT ? BLOCK_RECT_DEFAULT_HEIGHT : h), userData, 'hd-block2');
         this.w = parseFloat(this.w);
@@ -4318,25 +4378,42 @@ class CustomBlock extends Block {
 
         const svg = diagram.svg;
         this.shape = 'Rectangle';
+        this.shapeStyle = shapeStyle; // 'rect' | 'roundedTop'(원래 Circle) | 'chamferedTop'(원래 Diamond)
         this.iconOffset = this.w * 0.05;
         this.iconSize = Math.min(20, Math.min(this.w, this.h) - (this.iconOffset * 2));
         this.initArray = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'defaults', 'ok', 'error', 'default'];
         this.eventElementArray = []; // addAction들의 rect요소를 저장하는 배열
         this.detailType = CUSTOM_BLOCK;
         this.sizeModifiable = true;
+        // 이벤트가 CUSTOM_EVENT_COLLAPSE_THRESHOLD개를 넘으면 기본은 접힌 상태로
+        // 시작한다 - 펼침 여부는 세션 동안만 기억(파일에 저장 안 함, 다시 열면
+        // 항상 접힌 채로 시작).
+        this.eventsExpanded = false;
+        this.summaryRowShape = null;
+        this.summaryRowArea = null;
+        this.summaryRowText = null;
 
         let radius = 5;
         let iconAreaWidth = 22;
         let iconSize = 22;
 
-        this.shapeElement = __makeSvgElement('rect', {
-            'data-id': this.id,
-            'data-type': 'custom-block',
-            rx: 2,
-            width: this.w,
-            height: this.h
-        }, ['hd-block2', 'draggable']);
-        this.accumulatedHeight = parseFloat(this.shapeElement.getAttribute('height'));
+        const shapeD = buildCustomBlockShapeD(x, y, this.w, this.h, this.shapeStyle);
+        this.shapeElement = shapeD
+            ? __makeSvgElement('path', {
+                'data-id': this.id,
+                'data-type': 'custom-block',
+                d: shapeD,
+            }, ['hd-block2', 'draggable'])
+            : __makeSvgElement('rect', {
+                'data-id': this.id,
+                'data-type': 'custom-block',
+                rx: 2,
+                width: this.w,
+                height: this.h
+            }, ['hd-block2', 'draggable']);
+        // <path>는 height 속성이 없어서 DOM에서 다시 읽지 않고 이미 확정된
+        // this.h를 그대로 쓴다(<rect>였을 때도 어차피 같은 값).
+        this.accumulatedHeight = this.h;
 
         this.rootElement = __makeSvgElement('foreignObject', {
             width: this.w,
@@ -4496,23 +4573,117 @@ class CustomBlock extends Block {
         if (event && event.length > 0) {
             this.eventDeserialize(event);
         }
+        this._syncEventVisibility();
     }
 
     contextMenuClick(actionItem) {
         const command = actionItem.dataset.command;
+        this.addEventRow(command);
+        this.diagram.contextMenu = false;
+        this.diagram.dialog.remove();
+    }
+
+    // 이벤트 행 하나를 실제로 추가하는 공통 로직 — 네이티브 목록(contextMenuClick)과
+    // React LinkEventPicker 팝오버(onCustomEventAdding 콜백) 양쪽에서 공유한다.
+    // dialog/contextMenu 정리는 호출자 책임(각자 다른 UI라 정리 방식이 다름).
+    addEventRow(command) {
         this.initArray = this.initArray.filter((value) => value !== command);
         const customEventsHeight = this.eventElementArray.length * CUSTOM_EVENT_HEIGHT;
         // 생성된 요소들을 배열에 추가
         this.actionElement = new CustomEventBlock(this.diagram, this.id, command, this, CUSTOM_EVENT_BLOCK, this.x, this.y + this.h + customEventsHeight, this.w, CUSTOM_EVENT_HEIGHT);
         this.eventElementArray.push(this.actionElement);
         this.accumulatedHeight += CUSTOM_EVENT_HEIGHT;
-        this.diagram.contextMenu = false;
-        this.diagram.dialog.remove();
         const actionData = {
             block: this,
             newEventElement: this.actionElement,
         };
         this.diagram.actionManager.append(ActionManager.CUSTOM_EVENT_ADDED, actionData);
+        this._syncEventVisibility();
+    }
+
+    // 이벤트 행이 CUSTOM_EVENT_COLLAPSE_THRESHOLD개를 넘으면 앞쪽 (threshold-1)개만
+    // 보여주고 나머지는 "+N개 더보기" 요약 행 하나로 접는다 - 펼쳐져 있으면 전부
+    // 보여주고 맨 끝에 "접기" 행을 둔다. 실제 행의 순서/개별 anchor/link 연결은
+    // 전혀 안 건드리고 display만 토글하므로, 기존 add/remove/resize/drag 로직은
+    // 그대로 둔 채 이 메서드만 그 뒤에 추가로 호출하면 된다.
+    _syncEventVisibility() {
+        const total = this.eventElementArray.length;
+        const overThreshold = total > CUSTOM_EVENT_COLLAPSE_THRESHOLD;
+        const collapsed = overThreshold && !this.eventsExpanded;
+        const visibleRealCount = collapsed ? CUSTOM_EVENT_COLLAPSE_THRESHOLD - 1 : total;
+
+        this.eventElementArray.forEach((row, index) => {
+            row.setVisible(index < visibleRealCount);
+        });
+
+        if (!overThreshold) {
+            if (this.summaryRowShape) {
+                this.summaryRowShape.style.display = 'none';
+                this.summaryRowArea.style.display = 'none';
+            }
+            return;
+        }
+
+        this._ensureSummaryRow();
+        const y = this.y + this.h + visibleRealCount * CUSTOM_EVENT_HEIGHT;
+        this.summaryRowShape.style.display = '';
+        this.summaryRowArea.style.display = '';
+        __setSvgAttrs(this.summaryRowShape, { x: this.x, y, width: this.w });
+        __setSvgAttrs(this.summaryRowArea, { x: this.x, y, width: this.w });
+        this.summaryRowText.textContent = collapsed ? `+${total - visibleRealCount}개 더보기` : '접기';
+    }
+
+    _ensureSummaryRow() {
+        if (this.summaryRowShape) return;
+
+        // 'draggable' 클래스는 안 준다 - svg 레벨 mousedown 핸들러가 그 클래스를
+        // 보면 data-id로 diagram.components에서 등록된 컴포넌트를 찾으려 하는데,
+        // 이 요약 행은 실제 Block/Link가 아니라 순수 UI 토글이라 등록돼 있지 않다.
+        this.summaryRowShape = __makeSvgElement('rect', {
+            width: this.w,
+            height: CUSTOM_EVENT_HEIGHT,
+            rx: 2,
+        }, []);
+        this.summaryRowShape.style.cssText = `
+            fill: #eef4fc;
+            stroke: #cfe2f7;
+            stroke-width: 1;
+            cursor: pointer;
+            user-select: none;
+        `;
+
+        this.summaryRowArea = __makeSvgElement('foreignObject', {
+            width: this.w,
+            height: CUSTOM_EVENT_HEIGHT,
+        });
+        const container = document.createElement('div');
+        container.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            cursor: pointer;
+            user-select: none;
+        `;
+        this.summaryRowText = document.createElement('div');
+        this.summaryRowText.style.cssText = `
+            color: #1a5fb4;
+            font-size: 12px;
+            font-weight: 600;
+            pointer-events: none;
+        `;
+        container.appendChild(this.summaryRowText);
+        this.summaryRowArea.appendChild(container);
+
+        const toggle = () => {
+            this.eventsExpanded = !this.eventsExpanded;
+            this._syncEventVisibility();
+        };
+        this.summaryRowShape.addEventListener('click', toggle);
+        container.addEventListener('click', toggle);
+
+        this.svg.appendChild(this.summaryRowShape);
+        this.svg.appendChild(this.summaryRowArea);
     }
 
     _hideBlockMenu() {
@@ -4562,12 +4733,19 @@ class CustomBlock extends Block {
         this.blockMenu.setAttributeNS(null, 'y', parseFloat(newY) - MIN_DISTANCE);
         this.blockMenuArea.setAttributeNS(null, 'x', parseFloat(newX));
         this.blockMenuArea.setAttributeNS(null, 'y', parseFloat(newY) - MIN_DISTANCE);
-        this.shapeElement.setAttributeNS(null, 'x', parseFloat(newX));
-        this.shapeElement.setAttributeNS(null, 'y', parseFloat(newY));
+        if (this.shapeElement.tagName === 'path') {
+            // <path>는 x/y 속성이 없어서 위치가 바뀔 때마다 도형 자체를 새
+            // 좌표 기준으로 다시 그려야 한다(모양 자체는 그대로, 위치만 이동).
+            this.shapeElement.setAttribute('d', buildCustomBlockShapeD(parseFloat(newX), parseFloat(newY), this.w, this.h, this.shapeStyle));
+        } else {
+            this.shapeElement.setAttributeNS(null, 'x', parseFloat(newX));
+            this.shapeElement.setAttributeNS(null, 'y', parseFloat(newY));
+        }
         this.anchors.movePosition(relX, relY);
         this.eventElementArray.forEach((actionElement, index) => {
             actionElement.relocation(newX, newY, relX, relY, index);
         });
+        this._syncEventVisibility();
 
         this.diagram.actionManager.append('move-component', { target: this, relX, relY, newX, newY });
     }
@@ -4603,10 +4781,15 @@ class CustomBlock extends Block {
             w = this.w - _w;
             h = this.h - _h;
 
-            this.shapeElement.setAttributeNS(null, 'width', this.w);
-            this.shapeElement.setAttributeNS(null, 'height', this.h);
+            if (this.shapeElement.tagName === 'path') {
+                this.shapeElement.setAttribute('d', buildCustomBlockShapeD(this.x, this.y, this.w, this.h, this.shapeStyle));
+            } else {
+                this.shapeElement.setAttributeNS(null, 'width', this.w);
+                this.shapeElement.setAttributeNS(null, 'height', this.h);
+            }
             this.rootElement.setAttributeNS(null, 'width', this.w);
             this.rootElement.setAttributeNS(null, 'height', this.h);
+            this._syncEventVisibility();
 
             return true;
         }
@@ -4716,9 +4899,37 @@ class CustomEventBlock {
         this.anchors.add(this, this.event, parseFloat(this.x) + parseFloat(this.w), this.y + CUSTOM_EVENT_HEIGHT / 2, 'customEventAnchor');
     }
 
+    // "+N개 더보기"로 접혔을 때 이 행과, 이 행에 연결된 링크(있다면)를 통째로
+    // 숨긴다. shapePointElement/connectPointElement는 원래도 hover/선택 시에만
+    // 잠깐 보이는 요소라(기본 display:none) - 다시 보여줄 때는 그 자체 로직이
+    // 알아서 하게 두고, 숨길 때만 강제로 none을 준다.
+    setVisible(visible) {
+        const display = visible ? '' : 'none';
+        this.shapeElement.style.display = display;
+        this.addActionArea.style.display = display;
+        if (this.link) {
+            const link = this.diagram.components.get(this.link);
+            if (link) {
+                link.shapeElement.style.display = display;
+                if (link.textElement) {
+                    link.textElement.style.display = display;
+                }
+                if (!visible) {
+                    link.shapePointElement.style.display = 'none';
+                    link.connectPointElement.style.display = 'none';
+                }
+            }
+        }
+    }
+
     relocation(newX, newY, relX, relY, eleIndex) {
         // 모든 추가된 요소들의 위치 업데이트
-        const currentShapeHeight = parseFloat(this.block.shapeElement.getAttribute('height'));
+        // 부모 블록의 높이는 DOM 속성이 아니라 this.block.h(항상 정확히 갱신되는
+        // JS 상태)에서 읽는다 — 부모가 <path>로 그려지는 경우(원/다이아몬드가
+        // Custom 모드에서 바뀐 것, 10번 참고) shapeElement에는 'height' 속성
+        // 자체가 없어서 getAttribute()가 null → NaN이 되어 행이 엉뚱한 좌표로
+        // 튀는 버그가 있었다.
+        const currentShapeHeight = this.block.h;
         const actionEleNewY = newY + currentShapeHeight + (eleIndex * this.shapeElement.getAttribute('height'));
 
         this.shapeElement.setAttributeNS(null, 'x', newX);
@@ -4755,11 +4966,15 @@ class CustomEventBlock {
         this.block.initArray.push(this.event.trim());
 
         this.diagram.actionManager.append(ActionManager.CUSTOM_EVENT_REMOVED, beforeDeletedEvent);
+        this.block._syncEventVisibility();
     }
 
     _reArrange(array) {
-        const currentShapeHeight = parseFloat(this.block.shapeElement.getAttribute('y'));
-        const blocHeight = parseFloat(this.block.shapeElement.getAttribute('height'));
+        // relocation()과 같은 이유로 DOM 속성 대신 this.block.y/h를 쓴다 — 부모가
+        // <path>(원/다이아몬드가 Custom 모드로 바뀐 경우, 10번 참고)면
+        // shapeElement에 'y'/'height' 속성이 아예 없어서 NaN이 됐었다.
+        const currentShapeHeight = this.block.y;
+        const blocHeight = this.block.h;
         const eventHeight = this.addActionArea.getAttributeNS(null, 'height');
         array.forEach((ele, index) => {
             let actionEleNewY = currentShapeHeight + blocHeight + (index * this.shapeElement.getAttribute('height'));

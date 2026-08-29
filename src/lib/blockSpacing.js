@@ -74,4 +74,9 @@ export function relaxOverlappingBlocks(diagram) {
     }
     if (!movedAny) break;
   }
+
+  // block.setPosition()이 매번 diagram.drawHelperLine()으로 스냅 가이드선을
+  // 다시 그려서, 루프가 끝난 뒤에도 마지막으로 옮긴 블록의 가이드선이 화면에
+  // 남는다 — align()과 동일하게 정리해준다.
+  diagram.removeHelperLine();
 }

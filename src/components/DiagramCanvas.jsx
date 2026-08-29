@@ -13,6 +13,7 @@ import {
 } from '../lib/blockGrouping.js';
 import { syncLinkOverlapBadges } from '../lib/linkOverlap.js';
 import { relaxOverlappingBlocks } from '../lib/blockSpacing.js';
+import { runAutoLayout } from '../lib/autoLayout.js';
 import { getIconBadgesVisible, setIconBadgesVisible as persistIconBadgesVisible } from '../lib/iconBadgePref.js';
 
 // createNode()가 막 만든 블록은 diagram.components에 diagram.nextSeq-1 아이디로
@@ -217,6 +218,44 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
           },
         });
       },
+      // CustomBlock(CUSTOM_DIAGRAM_TYPE)의 "+" 버튼용 — onLinkCreating과 완전히
+      // 같은 요청/응답 패턴이고, 같은 LinkEventPicker를 그대로 재사용한다. "이미
+      // 쓰인 이벤트" 판정만 다르다 — onLinkCreating은 실제로 나간 링크의 caption
+      // 기준이지만, 여기는 아직 링크가 없는(막 추가하려는) 이벤트 행 목록
+      // (eventElementArray) 기준.
+      onCustomEventAdding: (block, e, callback) => {
+        const custom = latestOptionsRef.current.onCustomEventAdding;
+        if (custom) {
+          custom(block, e, callback);
+          return;
+        }
+
+        const nodeDef = meta?.nodes?.[block.metaName];
+        const linkDefs = nodeDef?.links ?? [];
+
+        if (linkDefs.length === 0) {
+          callback(window.prompt('이벤트(선택지) 이름을 입력하세요:'));
+          return;
+        }
+
+        const usedNames = new Set(block.eventElementArray.map((row) => row.event));
+
+        setLinkPicker({
+          x: e.clientX,
+          y: e.clientY,
+          nodeLabel: nodeDef.displayName ?? block.metaName,
+          options: linkDefs,
+          usedNames,
+          onPick: (name) => {
+            setLinkPicker(null);
+            callback(name);
+          },
+          onCancel: () => {
+            setLinkPicker(null);
+            callback(null);
+          },
+        });
+      },
     };
 
     // initialXml은 "파일 열기"로 이 캔버스가 새로 만들어진 경우에만 채워져 있다.
@@ -402,6 +441,18 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
     },
 
     align: (type) => diagramInstanceRef.current?.align(type),
+
+    // 그래프 구조(블록+링크)를 이해해서 전체를 다시 배치 — blockSpacing.js의
+    // "겹친 것만 살살"보다 훨씬 적극적인 버전. 그룹에 속한 블록은 이번에도
+    // 건드리지 않는다(autoLayout.js 주석 참고). 결과를 리본에서 토스트로
+    // 보여줄 수 있도록 그대로 반환한다.
+    runAutoLayout: (direction) => {
+      const diagram = diagramInstanceRef.current;
+      if (!diagram) return null;
+      const result = runAutoLayout(diagram, direction);
+      syncLinkOverlapBadges(diagram);
+      return result;
+    },
 
     zoomIn: () => diagramInstanceRef.current?.zoomIn(),
     zoomOut: () => diagramInstanceRef.current?.zoomOut(),

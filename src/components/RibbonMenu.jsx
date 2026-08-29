@@ -59,6 +59,17 @@ export default function RibbonMenu({
 
   const call = (method, ...args) => diagramRef.current?.[method]?.(...args);
 
+  // 그래프 구조를 이해해서 전체를 다시 배치하는 무거운 자동 정렬 — 결과를
+  // 토스트로 짧게 알려준다(그룹에 속해 이번엔 안 옮겨진 블록이 있으면 그것도
+  // 같이 안내).
+  const runAutoLayoutAndNotify = (direction) => {
+    const result = call('runAutoLayout', direction);
+    if (!result) return;
+    const directionLabel = direction === 'TB' ? '위→아래' : '왼쪽→오른쪽';
+    const groupNote = result.skippedGroupCount > 0 ? ` (그룹에 속한 ${result.skippedGroupCount}개는 그대로 둠)` : '';
+    showToast(`${directionLabel} 방향으로 ${result.movedCount}개 블록을 재배치했어요.${groupNote}`);
+  };
+
   const handleInsertClick = (nodeName) => {
     if (activeInsertNode === nodeName) {
       call('setCreateMode', null);
@@ -125,17 +136,31 @@ export default function RibbonMenu({
         )}
 
         {activeTab === '정렬' && (
-          <RibbonGroup label={canAlign ? '정렬' : '정렬 (2개 이상 선택 필요)'}>
-            {ALIGN_BUTTONS.map((btn) => (
+          <>
+            <RibbonGroup label={canAlign ? '정렬' : '정렬 (2개 이상 선택 필요)'}>
+              {ALIGN_BUTTONS.map((btn) => (
+                <RibbonButton
+                  key={btn.type}
+                  icon={btn.icon}
+                  label={btn.label}
+                  disabled={!canAlign}
+                  onClick={() => call('align', btn.type)}
+                />
+              ))}
+            </RibbonGroup>
+            <RibbonGroup label="자동 정렬 (전체)">
               <RibbonButton
-                key={btn.type}
-                icon={btn.icon}
-                label={btn.label}
-                disabled={!canAlign}
-                onClick={() => call('align', btn.type)}
+                icon="⬇"
+                label="위→아래로"
+                onClick={() => runAutoLayoutAndNotify('TB')}
               />
-            ))}
-          </RibbonGroup>
+              <RibbonButton
+                icon="➡"
+                label="왼쪽→오른쪽으로"
+                onClick={() => runAutoLayoutAndNotify('LR')}
+              />
+            </RibbonGroup>
+          </>
         )}
 
         {activeTab === '보기' && (
