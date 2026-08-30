@@ -10,7 +10,8 @@
     </linearGradient>
   </defs>
   <g style="filter:drop-shadow(0 0.6px 1px rgba(0,0,0,0.35))">
-    <path fill="url(#body)" stroke="#572808" stroke-width="0.4" stroke-linejoin="round" d="M5.854 4.854a.5.5 0 1 0-.708-.708l-3.5 3.5a.5.5 0 0 0 0 .708l3.5 3.5a.5.5 0 0 0 .708-.708L2.707 8zm4.292 0a.5.5 0 0 1 .708-.708l3.5 3.5a.5.5 0 0 1 0 .708l-3.5 3.5a.5.5 0 0 1-.708-.708L13.293 8z"/>
-    <path fill="url(#sheen)" d="M5.854 4.854a.5.5 0 1 0-.708-.708l-3.5 3.5a.5.5 0 0 0 0 .708l3.5 3.5a.5.5 0 0 0 .708-.708L2.707 8zm4.292 0a.5.5 0 0 1 .708-.708l3.5 3.5a.5.5 0 0 1 0 .708l-3.5 3.5a.5.5 0 0 1-.708-.708L13.293 8z"/>
+    <rect x="1" y="1" width="14" height="14" rx="3" fill="url(#body)" stroke="#572808" stroke-width="0.5" stroke-linejoin="round"/>
+    <rect x="1" y="1" width="14" height="14" rx="3" fill="url(#sheen)"/>
+    <text x="8" y="11.2" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7" font-weight="700" fill="#ffffff" stroke="#572808" stroke-width="0.25" paint-order="stroke" letter-spacing="-0.3">JS</text>
   </g>
 </svg>
