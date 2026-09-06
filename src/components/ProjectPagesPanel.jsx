@@ -14,7 +14,7 @@ import { useStylesheet } from '../lib/useStylesheet.js';
  * 뜬다) — 지금은 못 찾은 것도 그대로 클릭되게 두고, onSelectPage(App.jsx)가
  * "이 폴더에서 못 찾았다"는 걸 alert로 명확히 알려주도록 바꿨다.
  */
-export default function ProjectPagesPanel({ project, activeInclude, onSelectPage, onClose }) {
+export default function ProjectPagesPanel({ project, activeInclude, activeIsDirty, onSelectPage, onClose }) {
   useStylesheet('/css/project-pages-panel.css');
   const [query, setQuery] = useState('');
 
@@ -53,6 +53,7 @@ export default function ProjectPagesPanel({ project, activeInclude, onSelectPage
         {filteredPages.map((page) => {
           const found = project.files.has(page.include);
           const isActive = page.include === activeInclude;
+          const isDirty = isActive && activeIsDirty;
           return (
             <button
               type="button"
@@ -61,13 +62,18 @@ export default function ProjectPagesPanel({ project, activeInclude, onSelectPage
               onClick={() => onSelectPage(page)}
               title={found ? undefined : '이 폴더에서 해당 파일을 찾지 못했습니다. 클릭하면 안내가 뜹니다.'}
             >
+              <div className="project-page-filename">{page.include}</div>
               <div className="project-page-label">
-                {page.tag || page.include}
+                {isDirty && (
+                  <span className="project-page-dirty-dot" title="저장하지 않은 변경사항이 있습니다" />
+                )}
+                <span className={`project-page-title ${isDirty ? 'is-dirty' : ''}`}>
+                  {page.tag || page.include}
+                </span>
                 {page.isStart && <span className="project-page-badge project-page-badge-start">시작</span>}
                 {page.isEmbedded && <span className="project-page-badge">임베디드</span>}
                 {!found && <span className="project-page-badge project-page-badge-missing">파일 없음</span>}
               </div>
-              <div className="project-page-filename">{page.include}</div>
             </button>
           );
         })}

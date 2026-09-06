@@ -1,5 +1,18 @@
 import { NodeWrapper } from './diagram-library.js';
 
+// as-is 좌표를 그대로 쓰면 이 앱의 블록 렌더링 기준으로 너무 다닥다닥 붙어
+// 보인다는 피드백에 따라, legacy 좌표(x,y)에만 이 배율을 곱해 블록 사이
+// 거리를 넓힌다. 블록 자체 크기(w,h)는 그대로 둔다 — 모양은 안 바뀌고
+// 간격만 넓어짐. 원점(0,0) 기준 스케일이라 기존 배치 형태(상대적 위치관계)는
+// 그대로 유지된다. 이미 이 앱 포맷으로 저장된 파일(다시 열기)은 이 함수를
+// 안 거치므로 매번 다시 늘어나지 않는다.
+const LEGACY_POSITION_SCALE = 1.4;
+
+// toFixed로 소수 자릿수를 정리해 부동소수점 오차로 생기는 긴 꼬리(예: 126.70000000000002)를 방지한다.
+function scaleLegacyPosition(value) {
+    return Number((parseFloat(value) * LEGACY_POSITION_SCALE).toFixed(2));
+}
+
 /**
  * as-is ScenarioDesigner가 실제로 저장하는 페이지 편집 원본(.xml) 포맷을, 우리
  * Diagram.deserialize()가 이해하는 <scenario><block>...</block></scenario> XML로
@@ -129,7 +142,7 @@ export function convertDesignerXmlToScenarioXml(xmlText, meta) {
         blockElBySequence.set(sequence, blockEl);
 
         const svgEl = blockEl.appendChild('svg');
-        svgEl.appendChild('bounds').value(`${x},${y},${w},${h}`);
+        svgEl.appendChild('bounds').value(`${scaleLegacyPosition(x)},${scaleLegacyPosition(y)},${w},${h}`);
 
         const buildTagEl = blockEl.appendChild(nodeDef.buildTag);
         for (const prop of nodeDef.properties ?? []) {

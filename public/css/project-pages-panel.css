@@ -99,8 +99,8 @@
 }
 
 .project-page-label {
-  font-size: 12.5px;
-  color: #2b2a28;
+  font-size: 10px;
+  color: #434341;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -108,8 +108,8 @@
 }
 
 .project-page-filename {
-  font-size: 10.5px;
-  color: #a39d92;
+  font-size: 13.5px;
+  color: #000000;
   font-family: 'SFMono-Regular', Consolas, monospace;
 }
 
@@ -130,4 +130,17 @@
 .project-page-badge-missing {
   background: #f8d7d7;
   color: #a33a3a;
+}
+
+.project-page-dirty-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff0000;
+  flex-shrink: 0;
+}
+
+.project-page-title.is-dirty {
+  color: #ff0000;
+  font-weight: 600;
 }
