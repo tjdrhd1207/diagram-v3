@@ -11,6 +11,7 @@ import { looksLikeDesignerXml, convertDesignerXmlToScenarioXml } from './lib/des
 import { extractPromptRowsFromProject, buildPromptCsv } from './lib/promptExport.js';
 import { searchProject } from './lib/projectSearch.js';
 import { readPropertyValue, findTargetPageProp, findTargetBlockProp } from './lib/nodeProperties.js';
+import { findTestMarkedBlocks } from './lib/testMarkerCheck.js';
 
 export default function App() {
   const diagramRef = useRef(null);
@@ -320,6 +321,18 @@ export default function App() {
   }, [canvasKey]);
 
   const handleSaveProject = () => {
+    // TODO: 실제 "빌드" 기능이 생기면 이 체크는 저장이 아니라 그쪽으로 옮긴다 —
+    // 지금은 산출물을 만드는 동작이 저장(XML 다운로드)밖에 없어서 임시로 여기 건다.
+    const diagram = diagramRef.current?.getInstance?.();
+    const markedBlocks = findTestMarkedBlocks(diagram, effectiveMeta);
+    if (markedBlocks.length > 0) {
+      const list = markedBlocks.map((b) => `- ${b.label} (${b.propertyLabel})`).join('\n');
+      const proceed = window.confirm(
+        `테스트용 코드(// @test)가 남아있는 블록이 ${markedBlocks.length}개 있습니다:\n${list}\n\n그래도 저장할까요?`
+      );
+      if (!proceed) return;
+    }
+
     const xml = diagramRef.current?.serialize?.();
     if (!xml) return;
     const blob = new Blob([xml], { type: 'application/xml' });
