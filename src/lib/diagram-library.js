@@ -345,6 +345,16 @@ let STYLE_TEXT = `
     .hd-block2-iconarea {
         background-color: #ababab;
     }
+    .hd-block2-comment-indicator {
+        display: none;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: #8b5cf6;
+        border: 1px solid #ffffff;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+        cursor: help;
+    }
     .hd-block2:hover {
         fill: #999999;
         stroke: #000000;
@@ -2172,6 +2182,11 @@ Diagram.defaultOptions = {
     // 눌렀을 때 어떤 이벤트를 추가할지 물어본다. 등록 안 하면 기존
     // loadContextMenu()(initArray 기반 네이티브 목록)로 그대로 폴백한다.
     onCustomEventAdding: null,
+    // 캡션 수정용 dblclick(onNodeModifyingCaption)보다 먼저 물어본다 — true를
+    // 반환하면 "이 더블클릭은 내가 처리했다"는 뜻으로 보고 캡션 수정 프롬프트로
+    // 안 넘어간다(예: ScriptNode 더블클릭 시 캡션 대신 스크립트 편집창을 여는 등).
+    // false/undefined면 기존 캡션 수정 흐름으로 그대로 폴백.
+    onNodeDoubleClicked: null,
     onNodeModifyingCaption: null,
     onNodeModifyingComment: null,
     useBackgroundPattern: false,
@@ -3154,6 +3169,9 @@ class Block extends ResizableComponent {
                 });
             }
         } else {
+            if (diagram.options.onNodeDoubleClicked && diagram.options.onNodeDoubleClicked(block)) {
+                return;
+            }
             if (diagram.options.onNodeModifyingCaption) {
                 new Promise((resolve) => {
                     let oldValue = this.caption;
@@ -4467,6 +4485,20 @@ class CustomBlock extends Block {
         `;
         this.captionElement.innerHTML = caption;
 
+        // comment(설명)가 있는 블록임을 캔버스에서 바로 알아볼 수 있게 하는 표시.
+        // rootElement(foreignObject)의 자식이라 블록이 움직이거나 크기가 바뀌어도
+        // 따로 좌표를 갱신할 필요가 없다 — CSS 절대위치로 모서리에 붙어서 같이 움직인다.
+        // 부모 rootElement가 pointer-events: none이라 그대로 두면 호버가 전혀 안 먹으므로
+        // 이 요소에서만 명시적으로 auto로 되돌려서 title 툴팁이 뜨게 한다.
+        this.commentIndicator = document.createElement('div');
+        this.commentIndicator.className = 'hd-block2-comment-indicator';
+        this.commentIndicator.style.cssText = `
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            pointer-events: auto;
+        `;
+
         this.blockMenu = __makeSvgElement('rect', {
             'data-id': this.id,
             class: 'hover-resize',
@@ -4549,6 +4581,7 @@ class CustomBlock extends Block {
         this.headerDivContainer.appendChild(this.iconArea);
         this.headerDivContainer.appendChild(this.captionElement);
         this.rootElement.appendChild(this.headerDivContainer);
+        this.rootElement.appendChild(this.commentIndicator);
         addEventArea.appendChild(addIconElement);
         palleteArea.appendChild(palleteIconElement);
         blockMenuContainer.appendChild(addEventArea);
@@ -4574,6 +4607,23 @@ class CustomBlock extends Block {
             this.eventDeserialize(event);
         }
         this._syncEventVisibility();
+        this._syncCommentIndicator();
+    }
+
+    // 부모 클래스(Block)의 setComment()는 commentElement(다른 블록 도형들이 쓰는,
+    // 캡션 아래 항상 보이는 텍스트)를 전제로 하는데 CustomBlock은 그걸 만들지
+    // 않는다 — 그대로 두면 여기서 매번 TypeError가 난다. CustomBlock은 comment를
+    // 항상 펼쳐 보여주는 대신 모서리 표시 + 호버 툴팁으로 대신하므로 완전히
+    // 재정의한다.
+    setComment(value) {
+        this.comment = value;
+        this._syncCommentIndicator();
+    }
+
+    _syncCommentIndicator() {
+        const hasComment = !!this.comment && this.comment.length > 0;
+        this.commentIndicator.style.display = hasComment ? 'block' : 'none';
+        this.commentIndicator.title = hasComment ? this.comment : '';
     }
 
     contextMenuClick(actionItem) {

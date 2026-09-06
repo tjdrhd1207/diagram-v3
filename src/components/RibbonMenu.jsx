@@ -35,6 +35,8 @@ export default function RibbonMenu({
   onOpenProject,
   onOpenProjectFolder,
   onSaveProject,
+  onExportPromptList,
+  hasProject = false,
 }) {
   useStylesheet('/css/ribbon-menu.css');
 
@@ -196,6 +198,12 @@ export default function RibbonMenu({
             <RibbonGroup label="내보내기">
               <RibbonButton icon="⭳" label="이미지 다운로드" onClick={() => call('downloadImage')} />
               <RibbonButton icon="🖶" label="인쇄" onClick={() => call('printImage')} />
+              <RibbonButton
+                icon="📋"
+                label="멘트 목록 (CSV)"
+                onClick={onExportPromptList}
+                disabled={!hasProject}
+              />
             </RibbonGroup>
           </>
         )}

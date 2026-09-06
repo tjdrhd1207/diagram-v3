@@ -1,7 +1,8 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { useStylesheet } from '../lib/useStylesheet.js';
 import { NodeWrapper } from '../lib/diagram-library.js';
 import { groupColorStyle } from '../lib/groupColors.js';
+import { readPropertyValue, writePropertyValue } from '../lib/nodeProperties.js';
 import ScriptEditorModal from './ScriptEditorModal.jsx';
 
 // 어떤 필드가 지금 활성 상태인지(가장 최근에 포커스됐는지)를 필드 각각이 스스로
@@ -52,40 +53,7 @@ function ensureUserData(block, meta) {
     return block.userData;
 }
 
-/**
- * 대부분의 프로퍼티는 userData.attr(buildName)로 그냥 속성이지만, designer.meta.json을
- * 전수 조사해보니 buildDataType이 두 가지 더 있다(실제 디자이너 파일 대조로 확정 —
- * designerXml.js의 파일 상단 주석 참고):
- * - 'CData': 값이 속성이 아니라 buildName 이름의 자식 엘리먼트 텍스트로 들어간다
- *   (예: ScriptNode의 Script → <javascript><source>...</source></javascript>).
- * - 'XmlChild': 원래 구조화된 서브트리라 텍스트 입력 하나로 안전하게 다시 쓸 방법이
- *   없다 — v1은 읽기만 지원(문자열로 보여주기), 쓰기는 no-op.
- * 이걸 안 챙기면 Script류 프로퍼티는 항상 attr()이 null만 반환해서(값이 아예 속성이
- * 아니므로) 에디터가 늘 빈 채로 보이고, 저장도 조용히 무시된다.
- */
-function readPropertyValue(userData, prop) {
-    if (!userData) return null;
-    if (prop.buildDataType === 'CData' || prop.buildDataType === 'XmlChild') {
-        const child = userData.child(prop.buildName);
-        return child ? child.value() : null;
-    }
-    return userData.attr(prop.buildName);
-}
-
-function writePropertyValue(userData, prop, value) {
-    if (prop.buildDataType === 'CData') {
-        const child = userData.child(prop.buildName) ?? userData.appendChild(prop.buildName);
-        child.value(value);
-        return;
-    }
-    if (prop.buildDataType === 'XmlChild') {
-        // v1 범위 밖 — 구조화된 서브트리를 텍스트 하나로 되돌려 쓰지 않는다.
-        return;
-    }
-    userData.attr(prop.buildName, value);
-}
-
-export default function PropertyPanel({ block, meta }) {
+export default function PropertyPanel({ block, meta, autoOpenScriptEditorBlockId, onAutoOpenScriptEditorConsumed, onDirty }) {
     useStylesheet('/css/property-panel.css');
 
     if (!block) {
@@ -99,14 +67,25 @@ export default function PropertyPanel({ block, meta }) {
     }
 
     const nodeDef = meta?.nodes?.[block.metaName];
+    const autoOpenScript = autoOpenScriptEditorBlockId === block.id;
 
     // key={block.id}로 감싸서, 다른 블록을 선택하면 아래 필드들이 전부
     // 새 초기값으로 리마운트되도록 한다 (그렇지 않으면 controlled input들이
     // 이전 블록 값을 들고 있는 채로 남는 stale-value 버그가 생김).
-    return <PropertyPanelBody key={block.id} block={block} nodeDef={nodeDef} meta={meta} />;
+    return (
+        <PropertyPanelBody
+            key={block.id}
+            block={block}
+            nodeDef={nodeDef}
+            meta={meta}
+            autoOpenScript={autoOpenScript}
+            onAutoOpenScriptConsumed={onAutoOpenScriptEditorConsumed}
+            onDirty={onDirty}
+        />
+    );
 }
 
-function PropertyPanelBody({ block, nodeDef, meta }) {
+function PropertyPanelBody({ block, nodeDef, meta, autoOpenScript, onAutoOpenScriptConsumed, onDirty }) {
     const [caption, setCaptionState] = useState(block.caption ?? '');
     const [comment, setCommentState] = useState(block.comment ?? '');
     // 지금 활성(가장 최근에 포커스)된 필드의 key — Field가 이 값과 자기 fieldKey를
@@ -146,6 +125,7 @@ function PropertyPanelBody({ block, nodeDef, meta }) {
                             onChange={(e) => {
                                 setCaptionState(e.target.value);
                                 block.setCaption(e.target.value);
+                                onDirty?.();
                             }}
                         />
                     </Field>
@@ -156,6 +136,7 @@ function PropertyPanelBody({ block, nodeDef, meta }) {
                             onChange={(e) => {
                                 setCommentState(e.target.value);
                                 block.setComment(e.target.value);
+                                onDirty?.();
                             }}
                             rows={2}
                         />
@@ -165,7 +146,16 @@ function PropertyPanelBody({ block, nodeDef, meta }) {
                         <>
                             <div className="property-panel-section-title">속성</div>
                             {nodeDef.properties.map((prop) => (
-                                <PropertyField key={prop.name} block={block} prop={prop} meta={meta} nodeDescription={nodeDef.description} />
+                                <PropertyField
+                                    key={prop.name}
+                                    block={block}
+                                    prop={prop}
+                                    meta={meta}
+                                    nodeDescription={nodeDef.description}
+                                    autoOpenScript={autoOpenScript}
+                                    onAutoOpenScriptConsumed={onAutoOpenScriptConsumed}
+                                    onDirty={onDirty}
+                                />
                             ))}
                         </>
                     )}
@@ -182,7 +172,7 @@ function PropertyPanelBody({ block, nodeDef, meta }) {
     );
 }
 
-function PropertyField({ block, prop, meta, nodeDescription }) {
+function PropertyField({ block, prop, meta, nodeDescription, autoOpenScript, onAutoOpenScriptConsumed, onDirty }) {
     const initial = readPropertyValue(block.userData, prop);
     const [value, setValue] = useState(initial ?? '');
     const isEmpty = prop.required && !value;
@@ -205,6 +195,7 @@ function PropertyField({ block, prop, meta, nodeDescription }) {
                         const next = String(e.target.checked);
                         setValue(next);
                         ensureUserData(block, meta).attr(prop.buildName, next);
+                        onDirty?.();
                     }}
                 />
             </Field>
@@ -219,6 +210,7 @@ function PropertyField({ block, prop, meta, nodeDescription }) {
                     onChange={(e) => {
                         setValue(e.target.value);
                         writePropertyValue(ensureUserData(block, meta), prop, e.target.value);
+                        onDirty?.();
                     }}
                 >
                     <option value="">(선택 안 함)</option>
@@ -245,7 +237,10 @@ function PropertyField({ block, prop, meta, nodeDescription }) {
                 onSave={(next) => {
                     setValue(next);
                     writePropertyValue(ensureUserData(block, meta), prop, next);
+                    onDirty?.();
                 }}
+                autoOpen={autoOpenScript}
+                onAutoOpenConsumed={onAutoOpenScriptConsumed}
             />
         );
     }
@@ -262,6 +257,7 @@ function PropertyField({ block, prop, meta, nodeDescription }) {
                     onChange={(e) => {
                         setValue(e.target.value);
                         writePropertyValue(ensureUserData(block, meta), prop, e.target.value);
+                        onDirty?.();
                     }}
                 />
             </Field>
@@ -282,9 +278,20 @@ function PropertyField({ block, prop, meta, nodeDescription }) {
     );
 }
 
-function ScriptEditorField({ fieldKey, label, description, isEmpty, value, caption, helpText, onSave }) {
+function ScriptEditorField({ fieldKey, label, description, isEmpty, value, caption, helpText, onSave, autoOpen, onAutoOpenConsumed }) {
     const [isOpen, setIsOpen] = useState(false);
     const lineCount = value ? value.split('\n').length : 0;
+
+    // 블록을 더블클릭했을 때(App.jsx의 onNodeDoubleClicked) 프로퍼티 패널을 거치지
+    // 않고 바로 이 모달이 뜨도록 하는 진입점. 매번 다시 열리지 않도록 열자마자
+    // "소비"(부모 상태 초기화)한다 — 이후 이 블록을 그냥 선택만 해도 자동으로
+    // 열리지 않는다.
+    useEffect(() => {
+        if (autoOpen) {
+            setIsOpen(true);
+            onAutoOpenConsumed?.();
+        }
+    }, [autoOpen, onAutoOpenConsumed]);
 
     return (
         <>

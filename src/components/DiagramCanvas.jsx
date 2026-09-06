@@ -170,6 +170,10 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
       onZoomed: (...args) => latestOptionsRef.current.onZoomed?.(...args),
       onDiagramModified: (...args) => latestOptionsRef.current.onDiagramModified?.(...args),
       onNodeModifyingCaption: (...args) => latestOptionsRef.current.onNodeModifyingCaption?.(...args),
+      // 반환값(true/false)이 diagram-library.js에게 그대로 돌아가야 캡션 수정
+      // 프롬프트로 폴백할지를 결정할 수 있다 — 다른 onXxx들과 달리 "알림"이 아니라
+      // "질문" 콜백이므로 화살표 함수의 리턴을 그대로 전달한다.
+      onNodeDoubleClicked: (...args) => latestOptionsRef.current.onNodeDoubleClicked?.(...args),
       onNodeModifyingComment: (...args) => latestOptionsRef.current.onNodeModifyingComment?.(...args),
       onLinkCreating: (originBlock, e, callback) => {
         // 주의: 이 옵션은 다른 onXxx 콜백들과 다르다 — "알림"이 아니라
@@ -453,6 +457,11 @@ const DiagramCanvas = forwardRef(function DiagramCanvas(
       syncLinkOverlapBadges(diagram);
       return result;
     },
+
+    // 블록을 선택하고 화면 정가운데로 이동시킨다 — diagram-library.js 자체에
+    // 이미 있던 focusNode()를 그대로 노출(북마크 점프가 내부적으로 쓰던 것과
+    // 동일). 검색 결과를 클릭했을 때 그 블록으로 이동하는 데 재사용한다.
+    focusBlock: (blockId) => diagramInstanceRef.current?.focusNode(blockId),
 
     zoomIn: () => diagramInstanceRef.current?.zoomIn(),
     zoomOut: () => diagramInstanceRef.current?.zoomOut(),

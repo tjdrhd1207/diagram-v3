@@ -8,6 +8,7 @@ import { javascriptDefaults } from 'monaco-editor/language/typescript/monaco.con
 import { useStylesheet } from '../lib/useStylesheet.js';
 import { SCRIPT_UTIL_DTS } from '../lib/scriptUtilTypes.generated.js';
 import WvParamPreview from './WvParamPreview.jsx';
+import QueryBuilderPanel from './QueryBuilderPanel.jsx';
 
 const UTIL_LIB_URI = 'ts:filename/scenario-designer-util.d.ts';
 
@@ -103,6 +104,9 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
   // 어떤 화면이 나오는지 보여주는 탭 — 도움말과 같은 슬롯을 나눠 쓴다(둘 다
   // 열려있으면 900px 모달이 너무 좁아짐).
   const [showPreview, setShowPreview] = useState(false);
+  // 세 사이드 패널(미리보기/도움말/쿼리 빌더)은 서로 배타적 — 900px 모달에
+  // 두 개 이상이 동시에 뜨면 너무 좁아진다.
+  const [showQueryBuilder, setShowQueryBuilder] = useState(false);
   // null = 저장된 크기가 없음, CSS의 min(900px, 90vw) 기본값 그대로 사용.
   // localStorage에 저장해둔 값이 있으면 그걸로 시작해서, 이전에 조절한 크기가
   // 다음에 열 때도 유지되도록 한다(모달 전역 설정 — 블록별 아님).
@@ -151,13 +155,15 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
         setShowHelp(false);
       } else if (showPreview) {
         setShowPreview(false);
+      } else if (showQueryBuilder) {
+        setShowQueryBuilder(false);
       } else {
         onCancel();
       }
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [showHelp, showPreview, onCancel]);
+  }, [showHelp, showPreview, showQueryBuilder, onCancel]);
 
   return (
     <div className="script-editor-backdrop" onMouseDown={onCancel}>
@@ -172,10 +178,22 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
           <div className="script-editor-header-actions">
             <button
               type="button"
+              className={`script-editor-help-toggle ${showQueryBuilder ? 'is-active' : ''}`}
+              onClick={() => {
+                setShowQueryBuilder((v) => !v);
+                setShowHelp(false);
+                setShowPreview(false);
+              }}
+            >
+              쿼리 빌더
+            </button>
+            <button
+              type="button"
               className={`script-editor-help-toggle ${showPreview ? 'is-active' : ''}`}
               onClick={() => {
                 setShowPreview((v) => !v);
                 setShowHelp(false);
+                setShowQueryBuilder(false);
               }}
             >
               보이는ARS 미리보기
@@ -187,6 +205,7 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
                 onClick={() => {
                   setShowHelp((v) => !v);
                   setShowPreview(false);
+                  setShowQueryBuilder(false);
                 }}
               >
                 도움말
@@ -234,6 +253,33 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
           )}
 
           {showPreview && <WvParamPreview script={draft} />}
+
+          {showQueryBuilder && (
+            <QueryBuilderPanel
+              script={draft}
+              onApply={(next) => {
+                setDraft(next);
+                setShowQueryBuilder(false);
+              }}
+              onInsert={(text) => {
+                const editor = editorRef.current;
+                if (editor) {
+                  // 커서(또는 선택 영역) 위치에만 삽입 — 전체 스크립트의 나머지
+                  // 부분(빌더가 모르는 앞뒤 코드)은 그대로 둔다. executeEdits가
+                  // 모델을 바꾸면 <Editor>의 onChange가 알아서 draft를 갱신한다.
+                  editor.pushUndoStop();
+                  editor.executeEdits('query-builder-insert', [
+                    { range: editor.getSelection(), text, forceMoveMarkers: true },
+                  ]);
+                  editor.pushUndoStop();
+                  editor.focus();
+                } else {
+                  setDraft((d) => (d ? `${d}\n${text}` : text));
+                }
+                setShowQueryBuilder(false);
+              }}
+            />
+          )}
         </div>
 
         <div className="script-editor-footer">
