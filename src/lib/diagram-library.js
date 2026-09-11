@@ -47,7 +47,7 @@ const MEMO_MIN_WIDTH = 60;
 const MEMO_MIN_HEIGHT = 40;
 const DEFAULT_ADJ_DIST = 80;
 const MIN_DISTANCE = 40;
-const CUSTOM_BLOCK_MENU_WIDTH = 70;
+const CUSTOM_BLOCK_MENU_WIDTH = 37;
 const CUSTOM_BLOCK_MENU_HEIGHT = 30;
 const CUSTOM_EVENT_HEIGHT = 25;
 // 이벤트 행이 이 개수를 넘으면 기본으로 접어서 "+N개 더보기" 요약 행 하나로
@@ -4611,28 +4611,6 @@ class CustomBlock extends Block {
             pointer-events: none;
         `;
 
-        let palleteArea = document.createElement('div');
-        palleteArea.dataset.icon = BLOCK_MENU_ICON;
-        // palleteArea.dataset.type = 'palleteEvent';
-        palleteArea.dataset.id = this.id;
-        palleteArea.style.cssText = `
-            width: ${iconAreaWidth}px;
-            height: 25px;
-            margin: 2.5px;
-            border-radius: ${radius}px;
-            background-color: #ababab;
-        `;
-
-        let palleteIconElement = document.createElement('img');
-        palleteIconElement.src = '/icons/pallete.svg';
-        palleteIconElement.dataset.id = this.id;
-        palleteIconElement.style.cssText = `
-            height: ${iconSize}px;
-            width: ${iconSize}px;
-            display: table-cell;
-            vertical-align: middle;
-            pointer-events: none;
-        `;
         this.shapeElement.style.fill = color.bgColor;
         this.iconArea.style.backgroundColor = color.iconColor;
 
@@ -4646,9 +4624,7 @@ class CustomBlock extends Block {
         this.rootElement.appendChild(this.headerDivContainer);
         this.rootElement.appendChild(this.commentIndicator);
         addEventArea.appendChild(addIconElement);
-        palleteArea.appendChild(palleteIconElement);
         blockMenuContainer.appendChild(addEventArea);
-        blockMenuContainer.appendChild(palleteArea);
 
         this.blockMenuArea.appendChild(blockMenuContainer);
 
@@ -4727,11 +4703,18 @@ class CustomBlock extends Block {
         const overThreshold = total > CUSTOM_EVENT_VISIBLE_COUNT;
         const collapsed = overThreshold && !this.eventsExpanded;
         const visibleRealCount = collapsed ? CUSTOM_EVENT_VISIBLE_COUNT : total;
+        const y = this.y + this.h + visibleRealCount * CUSTOM_EVENT_HEIGHT;
 
-        // summaryAnchor를 rerouting 대상으로 쓰기 전에 먼저 만들어둬야 한다 -
-        // 아래 forEach가 그걸 참조한다.
+        // summaryAnchor를 만들고 이번 상태에 맞는 위치로 먼저 옮겨둬야 한다 -
+        // 아래 forEach가 숨겨진 행의 링크를 이 anchor로 재라우팅하면서 바로
+        // adjustPoints()를 호출하는데, 그때 anchor 위치가 아직 지난번(이전
+        // 펼침/접힘 상태) 좌표 그대로면 링크가 한 박자 전 위치에 그려진 채로
+        // 남는다 - 실제로 "접었는데 링크는 펼쳐진 자리에 그대로 있다가 블록을
+        // 옮기면 그제서야 맞아진다"는 버그로 나타났었다(사용자 피드백, 재현
+        // 확인됨). 그래서 anchor 위치 갱신을 재라우팅보다 먼저 해야 한다.
         if (overThreshold) {
             this._ensureSummaryRow();
+            this.summaryAnchor.movePosition(this.x + this.w, y + CUSTOM_EVENT_HEIGHT / 2, false);
         }
 
         this.eventElementArray.forEach((row, index) => {
@@ -4748,13 +4731,11 @@ class CustomBlock extends Block {
             return;
         }
 
-        const y = this.y + this.h + visibleRealCount * CUSTOM_EVENT_HEIGHT;
         this.summaryRowShape.style.display = '';
         this.summaryRowArea.style.display = '';
         __setSvgAttrs(this.summaryRowShape, { x: this.x, y, width: this.w });
         __setSvgAttrs(this.summaryRowArea, { x: this.x, y, width: this.w });
         this.summaryRowText.textContent = collapsed ? `+${total - visibleRealCount}개 더보기` : '접기';
-        this.summaryAnchor.movePosition(this.x + this.w, y + CUSTOM_EVENT_HEIGHT / 2, false);
     }
 
     _ensureSummaryRow() {
@@ -4920,6 +4901,12 @@ class CustomBlock extends Block {
             }
             this.rootElement.setAttributeNS(null, 'width', this.w);
             this.rootElement.setAttributeNS(null, 'height', this.h);
+            // rootElement(foreignObject)의 너비는 갱신되지만, 그 안의
+            // headerDivContainer(아이콘+제목을 담는 div)는 생성 시점에 인라인
+            // style로 너비를 고정해뒀던 터라 블록을 리사이즈해도 그대로였다 -
+            // 그래서 제목 텍스트 영역이 안 넓어져 보였다(사용자 피드백). 여기서
+            // 같이 맞춰준다.
+            this.headerDivContainer.style.width = `${this.w}px`;
             this._syncEventVisibility();
 
             return true;
@@ -5726,6 +5713,25 @@ class Link extends UIComponent {
     getOptimalCustomRoute(anchorInfo) {
         let midY = (anchorInfo.endY + anchorInfo.startY) / 2;
         let points = '';
+
+        // 자기참조 링크(어떤 블록의 이벤트 행이 그 블록 자신에게 다시 연결되는
+        // 경우) — 아래의 일반 라우팅 공식은 시작/끝점의 중간 y로 수평선을 그어
+        // 잇는데, 자기참조에서는 그 중간 y가 블록 자신의 세로 범위 안에 있어서
+        // 링크 선이 블록 몸체를 그대로 가로질러 지나가 버린다(사용자 피드백).
+        // 그래서 이 경우만 따로: 블록 오른쪽 바깥으로 나갔다가 블록 위쪽을 타고
+        // 돌아 들어오는 경로로 그려서 블록 사각형과 절대 안 겹치게 한다.
+        const destBlock = this.anchorTo.block;
+        const originBlock = this.anchorFrom.block?.block ?? this.anchorFrom.block;
+        if (destBlock === originBlock) {
+            const rightX = Math.max(anchorInfo.startX, destBlock.x + destBlock.w) + MIN_DISTANCE;
+            const topY = destBlock.y - MIN_DISTANCE;
+            return `M${anchorInfo.startX},${anchorInfo.startY}
+                L${rightX},${anchorInfo.startY}
+                L${rightX},${topY}
+                L${anchorInfo.endX},${topY}
+                L${anchorInfo.endX},${anchorInfo.endY}`;
+        }
+
         if (this.anchorTo.block.detailType === CUSTOM_BLOCK) {
             if (anchorInfo.startX > anchorInfo.endX) {
                 points = `M${anchorInfo.startX},${anchorInfo.startY} 

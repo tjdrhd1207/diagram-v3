@@ -26,6 +26,11 @@ export default function App() {
   // ProjectPagesPanel에서 페이지를 고르면 그 페이지의 File을 읽어 캔버스에 띄운다.
   const [project, setProject] = useState(null);
   const [activePageInclude, setActivePageInclude] = useState(null);
+  // ProjectPagesPanel의 "닫기(X)"는 프로젝트 자체를 내리는 게 아니라 패널만
+  // 화면에서 숨긴다 - 전엔 onClose가 setProject(null)을 호출해서 프로젝트
+  // 전체가 사라지고 다시 켤 방법이 없었다(사용자 피드백). "보기" 탭의
+  // "프로젝트 패널" 버튼으로 다시 켤 수 있다.
+  const [showProjectPanel, setShowProjectPanel] = useState(true);
 
   // DiagramCanvas는 마운트 시점에 딱 한 번만 Diagram 인스턴스를 만드는 "언컨트롤드"
   // 래퍼라(=제일 위 파일 주석 참고), "새 프로젝트"나 "프로젝트 열기"처럼 캔버스
@@ -213,6 +218,7 @@ export default function App() {
       }
       const missingCount = parsed.pages.filter((p) => !fileIndex.has(p.include)).length;
       setProject({ ...parsed, files: fileIndex, missingCount });
+      setShowProjectPanel(true);
 
       // 시작 페이지(IsStart) 우선, 없으면 마지막에 열려 있던 페이지, 그것도 없으면
       // 목록의 첫 페이지 — 어느 쪽이든 실제로 폴더에서 찾은 파일이어야 한다.
@@ -441,16 +447,18 @@ export default function App() {
         onSaveProject={handleSaveProject}
         onExportPromptList={handleExportPromptList}
         hasProject={!!project}
+        showProjectPanel={showProjectPanel}
+        onToggleProjectPanel={() => setShowProjectPanel((v) => !v)}
       />
 
       <div className="workspace">
-        {project && (
+        {project && showProjectPanel && (
           <ProjectPagesPanel
             project={project}
             activeInclude={activePageInclude}
             activeIsDirty={isCurrentPageDirty}
             onSelectPage={handleSelectPage}
-            onClose={() => setProject(null)}
+            onClose={() => setShowProjectPanel(false)}
           />
         )}
 

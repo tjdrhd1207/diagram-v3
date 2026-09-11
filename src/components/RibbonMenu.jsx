@@ -37,6 +37,8 @@ export default function RibbonMenu({
   onSaveProject,
   onExportPromptList,
   hasProject = false,
+  showProjectPanel = true,
+  onToggleProjectPanel,
 }) {
   useStylesheet('/css/ribbon-menu.css');
 
@@ -183,6 +185,14 @@ export default function RibbonMenu({
                   call('setIconBadgesVisible', next);
                 }}
               />
+              {hasProject && (
+                <RibbonButton
+                  icon="📁"
+                  label="프로젝트 패널"
+                  active={showProjectPanel}
+                  onClick={onToggleProjectPanel}
+                />
+              )}
             </RibbonGroup>
           </>
         )}
