@@ -1,0 +1,387 @@
+.mci-pane {
+  width: 520px;
+  flex-shrink: 0;
+  border-left: 1px solid #e5e4e3;
+  background: #f8f7f6;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+  color: #2b2a28;
+}
+
+.mci-lint-section {
+  border: 1px solid #e5e4e3;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mci-lint-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mci-lint-run {
+  border: 1px solid #d0cfce;
+  background: #ffffff;
+  color: #444341;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mci-lint-run:hover {
+  background: #eef4fc;
+  border-color: #9dbde0;
+}
+
+.mci-lint-hint {
+  font-size: 11px;
+  color: #79776f;
+}
+
+.mci-lint-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mci-lint-ok {
+  color: #1a7f37;
+  font-size: 12px;
+}
+
+.mci-lint-issue {
+  font-size: 11.5px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #fdf2f2;
+  color: #9a3030;
+  border: 1px solid #f3d4d4;
+}
+
+.mci-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mci-import {
+  border: 1px solid #d0cfce;
+  background: #ffffff;
+  color: #444341;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mci-import:hover {
+  background: #eef4fc;
+  border-color: #9dbde0;
+}
+
+.mci-export {
+  border: 1px solid #d0cfce;
+  background: #ffffff;
+  color: #444341;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mci-export:hover:not(:disabled) {
+  background: #eef4fc;
+  border-color: #9dbde0;
+}
+
+.mci-export:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mci-import-message {
+  color: #79776f;
+  line-height: 1.4;
+}
+
+.mci-case-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mci-case-empty {
+  padding: 12px;
+  text-align: center;
+  color: #a39d92;
+  font-size: 12px;
+}
+
+.mci-case-item {
+  border: 1px solid #e5e4e3;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.mci-case-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.mci-case-summary:hover {
+  background: #f3f2f1;
+}
+
+.mci-case-kind {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.mci-case-kind-flat {
+  background: #e6f0ff;
+  color: #1a5fb4;
+}
+
+.mci-case-kind-array {
+  background: #eef4fc;
+  color: #3b52c4;
+}
+
+.mci-case-kind-raw {
+  background: #f3f2f1;
+  color: #79776f;
+}
+
+.mci-case-serviceid {
+  flex-shrink: 0;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #2b2a28;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mci-case-comment {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #625f59;
+}
+
+.mci-case-toggle {
+  flex-shrink: 0;
+  color: #a39d92;
+  font-size: 10px;
+}
+
+.mci-case-body {
+  padding: 10px;
+  border-top: 1px solid #e5e4e3;
+  background: #fbfbfa;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mci-case-fields-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.mci-case-fields-top label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 500;
+  color: #444341;
+  font-size: 11.5px;
+}
+
+.mci-raw-label {
+  grid-column: 1 / -1;
+}
+
+.mci-case-fields-top input,
+.mci-case-fields-top select,
+.mci-raw-label textarea {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid #d0cfce;
+  border-radius: 4px;
+}
+
+.mci-raw-label textarea {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+  resize: vertical;
+}
+
+.mci-field-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mci-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 28px;
+  gap: 4px;
+  align-items: center;
+}
+
+.mci-field-row-head {
+  font-weight: 600;
+  color: #79776f;
+  font-size: 11px;
+}
+
+.mci-field-row input {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid #d0cfce;
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.mci-col-actions button {
+  border: 1px solid #d0cfce;
+  background: #ffffff;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 5px;
+  cursor: pointer;
+  color: #444341;
+}
+
+.mci-col-actions button:hover {
+  background: #eef4fc;
+  border-color: #9dbde0;
+}
+
+.mci-add-field,
+.mci-add-case {
+  align-self: flex-start;
+  border: 1px dashed #9dbde0;
+  background: transparent;
+  color: #1a5fb4;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mci-add-field:hover,
+.mci-add-case:hover {
+  background: #eef4fc;
+}
+
+.mci-remove-case {
+  align-self: flex-start;
+  border: 1px solid #f3d4d4;
+  background: #fdf2f2;
+  color: #9a3030;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mci-remove-case:hover {
+  background: #fbe4e4;
+}
+
+.mci-preview {
+  border: 1px solid #e5e4e3;
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.mci-preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #79776f;
+  padding: 6px 10px;
+  background: #f3f2f1;
+  border-bottom: 1px solid #e5e4e3;
+}
+
+.mci-preview pre {
+  margin: 0;
+  padding: 8px 10px;
+  font-family: 'Consolas', 'D2Coding', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.mci-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mci-insert,
+.mci-apply {
+  flex: 1;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mci-insert {
+  background: #ffffff;
+  border: 1px solid #1a5fb4;
+  color: #1a5fb4;
+}
+
+.mci-insert:hover {
+  background: #eef4fc;
+}
+
+.mci-apply {
+  background: #1a5fb4;
+  color: #ffffff;
+}
+
+.mci-apply:hover {
+  background: #164e94;
+}

@@ -218,12 +218,21 @@ export default function RibbonMenu({
   );
 }
 
+// Memo는 meta.json 노드 타입이 아니라('[MEMO]'라는 특수 이름으로
+// diagram-library.js가 직접 처리) meta.nodes에 없다 — 그래도 "삽입" 탭에서
+// 시나리오/컨트롤/음성/서비스와 나란히 카테고리 버튼+플라이아웃으로 보이도록,
+// groupNodesByCategory()에 섞어 넣을 수 있는 합성 엔트리로 정의해둔다. 앞으로
+// 비슷한(노드 타입은 아니지만 삽입 가능한) 것들이 생기면 여기 같이 추가한다.
+const UTILITY_NODE_DEFS = {
+  '[MEMO]': { group: '유틸', displayName: '메모', icon: '🗒' },
+};
+
 // meta.nodes[x].group is real data from designer_meta.json (e.g. "시나리오",
 // "음성", "컨트롤", "서비스") — use it to form ribbon sub-groups the same
 // way the "정렬"/"클립보드" groups are hand-written above.
 function groupNodesByCategory(nodes) {
   const byGroup = {};
-  for (const [nodeName, def] of Object.entries(nodes ?? {})) {
+  for (const [nodeName, def] of Object.entries({ ...nodes, ...UTILITY_NODE_DEFS })) {
     // withGroupFaceMeta()가 얹어주는 그룹 얼굴 같은 합성 엔트리는 사용자가 직접
     // "삽입"할 수 있는 노드 타입이 아니므로 목록에서 제외한다.
     if (def.internal) continue;

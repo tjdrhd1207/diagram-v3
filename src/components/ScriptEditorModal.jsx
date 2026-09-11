@@ -9,6 +9,7 @@ import { useStylesheet } from '../lib/useStylesheet.js';
 import { SCRIPT_UTIL_DTS } from '../lib/scriptUtilTypes.generated.js';
 import WvParamPreview from './WvParamPreview.jsx';
 import QueryBuilderPanel from './QueryBuilderPanel.jsx';
+import MciCaseBuilderPanel from './MciCaseBuilderPanel.jsx';
 
 const UTIL_LIB_URI = 'ts:filename/scenario-designer-util.d.ts';
 
@@ -104,9 +105,10 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
   // 어떤 화면이 나오는지 보여주는 탭 — 도움말과 같은 슬롯을 나눠 쓴다(둘 다
   // 열려있으면 900px 모달이 너무 좁아짐).
   const [showPreview, setShowPreview] = useState(false);
-  // 세 사이드 패널(미리보기/도움말/쿼리 빌더)은 서로 배타적 — 900px 모달에
-  // 두 개 이상이 동시에 뜨면 너무 좁아진다.
+  // 네 사이드 패널(미리보기/도움말/쿼리 빌더/MCI 케이스)은 서로 배타적 — 900px
+  // 모달에 두 개 이상이 동시에 뜨면 너무 좁아진다.
   const [showQueryBuilder, setShowQueryBuilder] = useState(false);
+  const [showMciBuilder, setShowMciBuilder] = useState(false);
   // null = 저장된 크기가 없음, CSS의 min(900px, 90vw) 기본값 그대로 사용.
   // localStorage에 저장해둔 값이 있으면 그걸로 시작해서, 이전에 조절한 크기가
   // 다음에 열 때도 유지되도록 한다(모달 전역 설정 — 블록별 아님).
@@ -157,13 +159,15 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
         setShowPreview(false);
       } else if (showQueryBuilder) {
         setShowQueryBuilder(false);
+      } else if (showMciBuilder) {
+        setShowMciBuilder(false);
       } else {
         onCancel();
       }
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [showHelp, showPreview, showQueryBuilder, onCancel]);
+  }, [showHelp, showPreview, showQueryBuilder, showMciBuilder, onCancel]);
 
   return (
     <div className="script-editor-backdrop" onMouseDown={onCancel}>
@@ -178,11 +182,24 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
           <div className="script-editor-header-actions">
             <button
               type="button"
+              className={`script-editor-help-toggle ${showMciBuilder ? 'is-active' : ''}`}
+              onClick={() => {
+                setShowMciBuilder((v) => !v);
+                setShowHelp(false);
+                setShowPreview(false);
+                setShowQueryBuilder(false);
+              }}
+            >
+              MCI 케이스
+            </button>
+            <button
+              type="button"
               className={`script-editor-help-toggle ${showQueryBuilder ? 'is-active' : ''}`}
               onClick={() => {
                 setShowQueryBuilder((v) => !v);
                 setShowHelp(false);
                 setShowPreview(false);
+                setShowMciBuilder(false);
               }}
             >
               쿼리 빌더
@@ -194,6 +211,7 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
                 setShowPreview((v) => !v);
                 setShowHelp(false);
                 setShowQueryBuilder(false);
+                setShowMciBuilder(false);
               }}
             >
               보이는ARS 미리보기
@@ -206,6 +224,7 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
                   setShowHelp((v) => !v);
                   setShowPreview(false);
                   setShowQueryBuilder(false);
+                  setShowMciBuilder(false);
                 }}
               >
                 도움말
@@ -277,6 +296,30 @@ export default function ScriptEditorModal({ title, value, helpText, onSave, onCa
                   setDraft((d) => (d ? `${d}\n${text}` : text));
                 }
                 setShowQueryBuilder(false);
+              }}
+            />
+          )}
+
+          {showMciBuilder && (
+            <MciCaseBuilderPanel
+              script={draft}
+              onApply={(next) => {
+                setDraft(next);
+                setShowMciBuilder(false);
+              }}
+              onInsert={(text) => {
+                const editor = editorRef.current;
+                if (editor) {
+                  editor.pushUndoStop();
+                  editor.executeEdits('mci-case-builder-insert', [
+                    { range: editor.getSelection(), text, forceMoveMarkers: true },
+                  ]);
+                  editor.pushUndoStop();
+                  editor.focus();
+                } else {
+                  setDraft((d) => (d ? `${d}\n${text}` : text));
+                }
+                setShowMciBuilder(false);
               }}
             />
           )}

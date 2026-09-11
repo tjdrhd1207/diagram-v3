@@ -22,12 +22,16 @@ import { getIconBadgesVisible, setIconBadgesVisible as persistIconBadgesVisible 
 // 주석 참고) 이 방식으로 "방금 만든 블록"을 직접 찾아서 그룹 색을 입힌다.
 // [MEMO]는 meta.nodes에 없는 특수 노드라 group이 없고, Memo는 setColor가
 // 없으므로 자연히 건너뛴다.
+// createNode()가 (락 상태, 시작 블럭 중복 등의 이유로) 실제로는 아무것도 안 만들고
+// 조용히 리턴할 수도 있는데, 그러면 nextSeq가 그대로라 "가장 최근" id가 사실은
+// 예전에 만든 블록을 가리킨다 — metaName이 다르면 방금 클릭한 nodeName으로
+// 만든 게 아니라는 뜻이므로 엉뚱한 블록 색을 덮어쓰지 않도록 걸러낸다.
 function applyGroupColorToNewestBlock(diagram, meta, nodeName) {
   if (!diagram) return;
   const group = meta?.nodes?.[nodeName]?.group;
   const newestId = String(diagram.nextSeq - 1).padStart(8, '0');
   const block = diagram.components.get(newestId);
-  if (!block || typeof block.setColor !== 'function') return;
+  if (!block || block.metaName !== nodeName || typeof block.setColor !== 'function') return;
   block.setColor(paletteKeyForGroup(group, 'bg'), paletteKeyForGroup(group, 'icon'));
 }
 

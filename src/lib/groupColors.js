@@ -7,6 +7,7 @@ export const GROUP_COLORS = {
   음성: '#0d9488', // teal
   컨트롤: '#f97316', // orange
   서비스: '#a855f7', // purple
+  유틸: '#64748b', // slate — 메모처럼 시나리오 노드가 아닌 삽입 항목용.
 };
 
 // meta.json에 group이 없거나 목록에 없는 새 그룹이 추가된 경우의 대체 색.

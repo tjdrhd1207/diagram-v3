@@ -40,6 +40,11 @@ const BLOCK_FONT_SIZE = 13;
 const BLOCK_CHANGE_SIZE = 20;
 const MEMO_DEFAULT_WIDTH = 300;
 const MEMO_DEFAULT_HEIGHT = 300;
+// 리사이즈로 줄일 수 있는 최소 크기 — 기본 생성 크기(위 300x300)보다는 훨씬
+// 작게 잡아서 작은 포스트잇처럼도 쓸 수 있게 한다. alignRelativeSize()에서만
+// 쓰인다(생성 시 초기 크기는 여전히 MEMO_DEFAULT_WIDTH/HEIGHT).
+const MEMO_MIN_WIDTH = 60;
+const MEMO_MIN_HEIGHT = 40;
 const DEFAULT_ADJ_DIST = 80;
 const MIN_DISTANCE = 40;
 const CUSTOM_BLOCK_MENU_WIDTH = 70;
@@ -47,8 +52,11 @@ const CUSTOM_BLOCK_MENU_HEIGHT = 30;
 const CUSTOM_EVENT_HEIGHT = 25;
 // 이벤트 행이 이 개수를 넘으면 기본으로 접어서 "+N개 더보기" 요약 행 하나로
 // 보여준다 - 분기가 많은 블록(예: 33개짜리)이 세로로 한없이 길어지는 걸 막기
-// 위함. 실제 행 개수는 threshold-1개까지 보이고 나머지는 요약 행으로 뭉친다.
-const CUSTOM_EVENT_COLLAPSE_THRESHOLD = 8;
+// 위함. 실제 행은 이 개수까지 그대로 보이고 나머지만 요약 행으로 뭉친다.
+// 단, 뭉쳐진 행들의 링크까지 안 보이게 감춰버리면 다이어그램을 훑어볼 때
+// 그 연결 자체를 놓칠 수 있어서(사용자 피드백), 링크는 숨기지 않고 요약 행
+// 자신의 anchor로 출발점만 옮겨서 계속 보이게 한다 - _syncEventVisibility() 참고.
+const CUSTOM_EVENT_VISIBLE_COUNT = 10;
 const ANCHOR_RADIUS = 6;
 const CUSTOM_EVENT_BLOCK = 'customEventBlock';
 const CUSTOM_BLOCK = 'CustomBlock';
@@ -689,8 +697,25 @@ class Diagram {
         });
     }
 
+    // 시작 블럭은 XML(=페이지)당 정확히 하나여야 한다 — delete()가 "시작 블럭은
+    // 지울 수 없다"는 전제로 짜여 있어서(바로 아래), 하나가 이미 있는 채로 또
+    // 만들어지면 중복분을 영영 못 지우는 상태가 된다. 그래서 애초에 두 번째가
+    // 만들어지지 않도록 여기서 막는다.
+    _hasStartNode() {
+        for (const component of this.components.values()) {
+            if (component.type === 'B' && this.meta.nodes[component.metaName]?.isStartNode) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     createNode(nodeName, x, y) {
         if (this.isLocked()) {
+            return;
+        }
+        if (nodeName !== '[MEMO]' && this.meta.nodes[nodeName]?.isStartNode && this._hasStartNode()) {
+            alert('시작 블럭은 이미 있어서 하나 더 만들 수 없습니다.');
             return;
         }
         let memoDefaultSize = { width: 0, height: 0 };
@@ -919,17 +944,29 @@ class Diagram {
         if (this.isLocked()) {
             return;
         }
-        let hasStartNode = false;
+        // 시작 블럭이 하나도 안 남게 되는 삭제만 막는다 — 정상적인 경우(시작
+        // 블럭 1개)엔 그 하나를 지우려는 시도를 막는 원래 동작 그대로지만,
+        // (버그 등으로) 시작 블럭이 여러 개 만들어져 있었던 경우엔 그중 일부를
+        // 지워서 정상 상태(1개)로 되돌릴 수 있어야 한다 — 안 그러면 중복된
+        // 시작 블럭을 영영 못 지우는 상태에 빠진다.
+        let totalStartNodeCount = 0;
+        for (const component of this.components.values()) {
+            if (component.type === 'B' && this.meta.nodes[component.metaName]?.isStartNode) {
+                totalStartNodeCount++;
+            }
+        }
+        let selectedStartNodeCount = 0;
         this.selectedItems.forEach(item => {
             if (item.type === 'B') {
                 let nodeInfo = this.meta.nodes[item.metaName];
                 if (nodeInfo.isStartNode) {
-                    hasStartNode = true;
+                    selectedStartNodeCount++;
                 }
             }
         });
+        let wouldRemoveLastStartNode = selectedStartNodeCount > 0 && selectedStartNodeCount >= totalStartNodeCount;
 
-        if (hasStartNode) {
+        if (wouldRemoveLastStartNode) {
             if (this.selectedItems.length === 1) {
                 alert('선택한 블럭은 삭제할 수 없습니다.');
             } else {
@@ -1346,11 +1383,28 @@ class Diagram {
             let nodeId = node.attr('id');
             let block = diagram.components.get(nodeId);
             if (block.eventElementArray && block.eventElementArray.length > 0) {
-                let index = 0;
+                // <choice>는 링크가 실제로 연결된 행에 대해서만 저장된다(Block.serialize()
+                // 참고 — block.links를 순회하지, eventElementArray 전체를 순회하지 않는다).
+                // 그래서 전체 행 개수와 <choice> 개수가 다른 게 정상인데, 예전엔 그냥
+                // 순서대로(0번째 <choice> -> 0번째 행, 1번째 -> 1번째, ...) 매칭했다 —
+                // 링크가 하나도 없는 앞쪽 행들이 있으면(예: 9번째 행에만 링크가 있는
+                // 경우) 엉뚱한 행에 그 링크를 붙이려다 존재하지 않는 anchor를 찾아
+                // "Cannot read properties of undefined (reading 'x')" 크래시가 났다.
+                // event 이름으로 실제 주인 행을 찾아서 붙이도록 고친다.
                 for (let nodeSub of node.children('choice')) {
-                    Link.deserialize(block.eventElementArray[index], nodeSub, CUSTOM_BLOCK);
-                    index++;
+                    const eventName = nodeSub.attr('event');
+                    const row = block.eventElementArray.find((r) => r.event === eventName);
+                    if (row) {
+                        Link.deserialize(row, nodeSub, CUSTOM_BLOCK);
+                    }
                 }
+                // CustomBlock 생성자는 이 시점보다 먼저(링크가 하나도 안 붙은 채)
+                // _syncEventVisibility()를 한 번 호출해둔 상태다 — 그때는 각 행의
+                // link가 전부 null이라 "숨겨진 행의 링크도 같이 숨기기"가 스킵됐다.
+                // 이제 막 위에서 링크를 다 붙였으니 다시 한 번 동기화해서, 접힌
+                // 채로 파일을 열었을 때 숨은 행의 링크가 화면에 혼자 떠 있는(자기
+                // 행은 안 보이는데 링크만 보이는) 상태로 시작하지 않게 한다.
+                block._syncEventVisibility?.();
             } else {
                 for (let nodeSub of node.children('choice')) {
                     Link.deserialize(block, nodeSub);
@@ -2922,6 +2976,12 @@ class Anchor {
                             origin.block.link = link.id;
                             if (origin.block.type === CUSTOM_EVENT_BLOCK) {
                                 origin.block.actionDivContainer.dataset.linkId = link.id;
+                                // 이 행이 이미 "+N개 더보기"에 뭉쳐진 채로 접혀 있는 상태에서
+                                // 새로 링크를 연결한 경우 - 링크 생성 직후엔 아직 자기 자신의
+                                // (화면엔 안 보이는) anchor를 그대로 쓰고 있어서 요약 행 쪽으로
+                                // 안 옮겨진 채로 남는다. 다시 동기화해서 바로 요약 행 anchor로
+                                // 출발점을 옮겨준다.
+                                origin.block.block._syncEventVisibility?.();
                             }
                             diagram.actionManager.append(ActionManager.COMPONENTS_ADDED, [link]);
                         }
@@ -4403,10 +4463,13 @@ class CustomBlock extends Block {
         this.eventElementArray = []; // addAction들의 rect요소를 저장하는 배열
         this.detailType = CUSTOM_BLOCK;
         this.sizeModifiable = true;
-        // 이벤트가 CUSTOM_EVENT_COLLAPSE_THRESHOLD개를 넘으면 기본은 접힌 상태로
+        // 이벤트가 CUSTOM_EVENT_VISIBLE_COUNT개를 넘으면 기본은 접힌 상태로
         // 시작한다 - 펼침 여부는 세션 동안만 기억(파일에 저장 안 함, 다시 열면
         // 항상 접힌 채로 시작).
         this.eventsExpanded = false;
+        // 접혔을 때 뭉쳐지는 행들의 링크가 임시로 출발점을 옮겨 쓰는 요약 행
+        // 전용 anchor. _ensureSummaryRow()에서 한 번만 만든다.
+        this.summaryAnchor = null;
         this.summaryRowShape = null;
         this.summaryRowArea = null;
         this.summaryRowText = null;
@@ -4651,19 +4714,30 @@ class CustomBlock extends Block {
         this._syncEventVisibility();
     }
 
-    // 이벤트 행이 CUSTOM_EVENT_COLLAPSE_THRESHOLD개를 넘으면 앞쪽 (threshold-1)개만
-    // 보여주고 나머지는 "+N개 더보기" 요약 행 하나로 접는다 - 펼쳐져 있으면 전부
-    // 보여주고 맨 끝에 "접기" 행을 둔다. 실제 행의 순서/개별 anchor/link 연결은
-    // 전혀 안 건드리고 display만 토글하므로, 기존 add/remove/resize/drag 로직은
-    // 그대로 둔 채 이 메서드만 그 뒤에 추가로 호출하면 된다.
+    // 이벤트 행이 CUSTOM_EVENT_VISIBLE_COUNT개를 넘으면 앞쪽 그만큼만 보여주고
+    // 나머지는 "+N개 더보기" 요약 행 하나로 접는다 - 펼쳐져 있으면 전부 보여주고
+    // 맨 끝에 "접기" 행을 둔다. 실제 행의 순서/개별 anchor/link 연결은 전혀 안
+    // 건드리고 display만 토글하므로, 기존 add/remove/resize/drag 로직은 그대로
+    // 둔 채 이 메서드만 그 뒤에 추가로 호출하면 된다.
+    // 뭉쳐진(숨겨진) 행에 링크가 달려 있으면 링크 자체는 숨기지 않고 출발점만
+    // 요약 행의 anchor로 옮긴다(setLinkOrigin) - 링크를 완전히 숨기면 다이어그램을
+    // 훑어볼 때 그 연결 자체를 놓칠 수 있다는 피드백 반영.
     _syncEventVisibility() {
         const total = this.eventElementArray.length;
-        const overThreshold = total > CUSTOM_EVENT_COLLAPSE_THRESHOLD;
+        const overThreshold = total > CUSTOM_EVENT_VISIBLE_COUNT;
         const collapsed = overThreshold && !this.eventsExpanded;
-        const visibleRealCount = collapsed ? CUSTOM_EVENT_COLLAPSE_THRESHOLD - 1 : total;
+        const visibleRealCount = collapsed ? CUSTOM_EVENT_VISIBLE_COUNT : total;
+
+        // summaryAnchor를 rerouting 대상으로 쓰기 전에 먼저 만들어둬야 한다 -
+        // 아래 forEach가 그걸 참조한다.
+        if (overThreshold) {
+            this._ensureSummaryRow();
+        }
 
         this.eventElementArray.forEach((row, index) => {
-            row.setVisible(index < visibleRealCount);
+            const rowVisible = index < visibleRealCount;
+            row.setVisible(rowVisible);
+            row.setLinkOrigin(rowVisible ? null : this.summaryAnchor);
         });
 
         if (!overThreshold) {
@@ -4674,13 +4748,13 @@ class CustomBlock extends Block {
             return;
         }
 
-        this._ensureSummaryRow();
         const y = this.y + this.h + visibleRealCount * CUSTOM_EVENT_HEIGHT;
         this.summaryRowShape.style.display = '';
         this.summaryRowArea.style.display = '';
         __setSvgAttrs(this.summaryRowShape, { x: this.x, y, width: this.w });
         __setSvgAttrs(this.summaryRowArea, { x: this.x, y, width: this.w });
         this.summaryRowText.textContent = collapsed ? `+${total - visibleRealCount}개 더보기` : '접기';
+        this.summaryAnchor.movePosition(this.x + this.w, y + CUSTOM_EVENT_HEIGHT / 2, false);
     }
 
     _ensureSummaryRow() {
@@ -4734,6 +4808,13 @@ class CustomBlock extends Block {
 
         this.svg.appendChild(this.summaryRowShape);
         this.svg.appendChild(this.summaryRowArea);
+
+        // 뭉쳐진 행들의 링크가 공유하는 출발점. 이 블록 자신의 AnchorGroup에
+        // 등록해두면 block.movePosition()의 this.anchors.movePosition() 호출로
+        // 다른 anchor(L/R/T/B)들과 같이 자동으로 따라 움직인다. 초기 위치는
+        // 대충 잡아두고 _syncEventVisibility()가 호출될 때마다 실제 y로 갱신한다.
+        this.anchors.add(this, 'summaryRow', this.x + this.w, this.y + this.h);
+        this.summaryAnchor = this.anchors.get('summaryRow');
     }
 
     _hideBlockMenu() {
@@ -4949,27 +5030,28 @@ class CustomEventBlock {
         this.anchors.add(this, this.event, parseFloat(this.x) + parseFloat(this.w), this.y + CUSTOM_EVENT_HEIGHT / 2, 'customEventAnchor');
     }
 
-    // "+N개 더보기"로 접혔을 때 이 행과, 이 행에 연결된 링크(있다면)를 통째로
-    // 숨긴다. shapePointElement/connectPointElement는 원래도 hover/선택 시에만
-    // 잠깐 보이는 요소라(기본 display:none) - 다시 보여줄 때는 그 자체 로직이
-    // 알아서 하게 두고, 숨길 때만 강제로 none을 준다.
+    // "+N개 더보기"로 접혔을 때 이 행(과 그 안의 삭제 버튼 등 UI)만 숨긴다.
+    // 링크는 더 이상 여기서 숨기지 않는다 - setLinkOrigin()이 대신 출발점을
+    // 요약 행 쪽으로 옮겨서 계속 보이게 한다.
     setVisible(visible) {
         const display = visible ? '' : 'none';
         this.shapeElement.style.display = display;
         this.addActionArea.style.display = display;
-        if (this.link) {
-            const link = this.diagram.components.get(this.link);
-            if (link) {
-                link.shapeElement.style.display = display;
-                if (link.textElement) {
-                    link.textElement.style.display = display;
-                }
-                if (!visible) {
-                    link.shapePointElement.style.display = 'none';
-                    link.connectPointElement.style.display = 'none';
-                }
-            }
-        }
+    }
+
+    // summaryAnchor가 주어지면(= 이 행이 "+N개 더보기"에 뭉쳐진 상태) 이 행에
+    // 연결된 링크의 출발점을 부모 블록의 요약 행 anchor로 옮겨서 링크 자체는
+    // 계속 보이게 한다 - 여러 행이 뭉쳐 있으면 그 링크들이 전부 같은 요약 행
+    // anchor에서 출발하게 된다(사용자 확인: "START가 여러개더라도 나가도록").
+    // null이면 원래 자기 anchor로 되돌린다. Link.adjustPoints()/getOptimalCustomRoute()는
+    // anchorFrom의 x/y만 읽고 그 block은 참조하지 않으므로(diagram-library.js),
+    // anchor 객체 자체를 바꿔치기해도 경로 계산엔 안전하다.
+    setLinkOrigin(summaryAnchor) {
+        if (!this.link) return;
+        const link = this.diagram.components.get(this.link);
+        if (!link) return;
+        link.anchorFrom = summaryAnchor || this.anchors.get(this.event);
+        link.adjustPoints(link.moveX, link.moveY);
     }
 
     relocation(newX, newY, relX, relY, eleIndex) {
@@ -7459,8 +7541,8 @@ class Memo extends ResizableComponent {
                 minWidth = this.diagram.options.nodeSize.memo.width;
                 minHeight = this.diagram.options.nodeSize.memo.height;
             } else {
-                minWidth = MEMO_DEFAULT_WIDTH;
-                minHeight = MEMO_DEFAULT_HEIGHT;
+                minWidth = MEMO_MIN_WIDTH;
+                minHeight = MEMO_MIN_HEIGHT;
             }
             if (this.w < minWidth) {
                 this.w = minWidth;

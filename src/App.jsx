@@ -40,6 +40,13 @@ export default function App() {
   // 합성 메타 엔트리(__GROUP_FACE__)를 얹은 버전을 한 번만 만들어서 하위 컴포넌트
   // 전체에 원래 designerMeta 대신 이걸 내려준다.
   const effectiveMeta = useMemo(() => withGroupFaceMeta(designerMeta), []);
+  // 지금 캔버스에 떠 있는 페이지가 project.pages 중 어떤 것인지 — 캔버스 위
+  // "지금 보고 있는 페이지" 표시에 쓴다. GOTO 블록 더블클릭으로 다른 페이지로
+  // 넘어갔을 때, 왼쪽 페이지 목록을 따로 보지 않아도 바로 알 수 있게 하기 위함.
+  const activePage = useMemo(
+    () => project?.pages.find((p) => p.include === activePageInclude) ?? null,
+    [project, activePageInclude]
+  );
 
   // 정확히 블록 1개가 선택됐을 때만 값이 채워지는 상태 - 프로퍼티 패널이
   // 이 상태를 보고 어떤 블록을 보여줄지 결정한다.
@@ -448,6 +455,14 @@ export default function App() {
         )}
 
         <div className="canvas-area">
+          {activePage && (
+            <div className="current-page-indicator">
+              {isCurrentPageDirty && <span className="current-page-indicator-dot" title="저장하지 않은 변경사항이 있습니다" />}
+              <span className="current-page-indicator-label">{activePage.tag || activePage.include}</span>
+              {activePage.isStart && <span className="current-page-indicator-badge">시작</span>}
+              <span className="current-page-indicator-filename">{activePage.include}</span>
+            </div>
+          )}
           <DiagramCanvas
             key={canvasKey}
             ref={diagramRef}
