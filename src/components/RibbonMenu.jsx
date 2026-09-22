@@ -39,6 +39,8 @@ export default function RibbonMenu({
   hasProject = false,
   showProjectPanel = true,
   onToggleProjectPanel,
+  showSimulator = false,
+  onToggleSimulator,
 }) {
   useStylesheet('/css/ribbon-menu.css');
 
@@ -193,6 +195,14 @@ export default function RibbonMenu({
                   onClick={onToggleProjectPanel}
                 />
               )}
+            </RibbonGroup>
+            <RibbonGroup label="시나리오">
+              <RibbonButton
+                icon="💬"
+                label="시뮬레이터"
+                active={showSimulator}
+                onClick={onToggleSimulator}
+              />
             </RibbonGroup>
           </>
         )}

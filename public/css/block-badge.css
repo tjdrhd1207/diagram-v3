@@ -7,3 +7,18 @@
 .badges-off .hd-block2-iconarea {
   background-color: transparent !important;
 }
+
+/* 시나리오 시뮬레이터가 지금 캔버스에서 지나온/멈춰있는 블록 표시. 그룹 색은
+   Block#setColor()가 인라인 style.fill로 칠하므로 fill은 건드리지 않고 stroke만
+   바꾼다 — 위 배지 규칙과 같은 이유로 .hd-block2 기본 stroke를 이기려면
+   !important가 필요하다. */
+.hd-block2.simulator-visited {
+  stroke: #16a34a !important;
+  stroke-width: 2px !important;
+}
+
+.hd-block2.simulator-current {
+  stroke: #f59e0b !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.85)) !important;
+}

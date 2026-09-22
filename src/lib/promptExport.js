@@ -11,7 +11,7 @@ export function isPromptLikeNode(nodeDef) {
     return nodeDef?.properties?.some((p) => p.name === 'AudioData') ?? false;
 }
 
-function findAudioDataProp(nodeDef) {
+export function findAudioDataProp(nodeDef) {
     return nodeDef?.properties?.find((p) => p.name === 'AudioData') ?? null;
 }
 

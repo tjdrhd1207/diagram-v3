@@ -12,6 +12,8 @@ import { extractPromptRowsFromProject, buildPromptCsv } from './lib/promptExport
 import { searchProject } from './lib/projectSearch.js';
 import { readPropertyValue, findTargetPageProp, findTargetBlockProp } from './lib/nodeProperties.js';
 import { findTestMarkedBlocks } from './lib/testMarkerCheck.js';
+import { createSimulatorEngine, LIVE_PAGE_INCLUDE } from './lib/scenarioSimulator.js';
+import ScenarioSimulatorPanel from './components/ScenarioSimulatorPanel.jsx';
 
 export default function App() {
   const diagramRef = useRef(null);
@@ -40,6 +42,16 @@ export default function App() {
   // Diagram.deserialize()로 그 XML을 불러온 상태로 시작한다.
   const [canvasKey, setCanvasKey] = useState(0);
   const [initialXml, setInitialXml] = useState(null);
+
+  // pageInclude -> { xml, isDirty } — 한 번이라도 나갔다 들어온(또는 지금 보고
+  // 있는) 페이지의 최신 상태를 메모리에 조용히 캐시해둔다. 페이지 전환마다 파일을
+  // 다시 읽고 편집 내용을 버리던 예전 방식 대신, 나갈 때 캔버스를 직렬화해서
+  // 여기 저장했다가 돌아올 때 그대로 복원한다 — 그래서 "저장 안 했는데
+  // 넘어갈까요?" 확인창이 필요 없어지고, 시뮬레이터가 GOTO로 페이지를 넘나들
+  // 때도 캔버스가 방해 없이 조용히 따라갈 수 있다. useState가 아니라 useRef인
+  // 이유: 캐시 갱신 자체는 화면을 다시 그릴 필요가 없는 부수효과이기 때문(실제
+  // 리렌더는 activePageInclude/initialXml/isCurrentPageDirty가 담당).
+  const pageCacheRef = useRef(new Map());
 
   // designer.meta.json 자체는 건드리지 않고, 그룹 얼굴 블록이 저장/삭제 시 필요로 하는
   // 합성 메타 엔트리(__GROUP_FACE__)를 얹은 버전을 한 번만 만들어서 하위 컴포넌트
@@ -73,7 +85,16 @@ export default function App() {
   // 가 true가 되기 전까지 발생하지 않고, 자동 보정 함수들은 그 이벤트를 발생시키는
   // 경로를 아예 안 탄다 — diagram-library.js 확인 완료).
   const [isCurrentPageDirty, setIsCurrentPageDirty] = useState(false);
-  const markCurrentPageDirty = () => setIsCurrentPageDirty(true);
+  const markCurrentPageDirty = () => {
+    setIsCurrentPageDirty(true);
+    if (activePageInclude) {
+      const entry = pageCacheRef.current.get(activePageInclude) ?? { xml: null, isDirty: false };
+      // xml은 여기서 안 채운다 — 실제 최신 내용은 이 페이지를 나갈 때
+      // commitActivePageToCache()가 serialize()로 정확히 채워 넣는다. 여기서는
+      // "이 페이지는 더티다"라는 사실만 미리 기록해 둔다.
+      pageCacheRef.current.set(activePageInclude, { ...entry, isDirty: true });
+    }
+  };
 
   // Ctrl+F로 열리는 "프로젝트 전체 검색" 패널 상태.
   const [showSearchPanel, setShowSearchPanel] = useState(false);
@@ -84,6 +105,14 @@ export default function App() {
   // 동안(비동기 파일 읽기 + 캔버스 리마운트) 잠깐 들고 있는 "그 블록으로
   // 이동해야 한다"는 요청 — 새 캔버스가 준비되면(canvasKey 변경) 소비한다.
   const [pendingFocusBlockId, setPendingFocusBlockId] = useState(null);
+
+  // 시나리오 시뮬레이터(채팅형 워크스루) 상태 — 엔진 인스턴스 자체는 리렌더와
+  // 무관하므로 ref로, 화면에 그릴 스냅샷(메시지/상태/선택지)만 state로 들고 있다.
+  const [showSimulator, setShowSimulator] = useState(false);
+  const simulatorEngineRef = useRef(null);
+  const [simulatorMessages, setSimulatorMessages] = useState([]);
+  const [simulatorStatus, setSimulatorStatus] = useState('running');
+  const [simulatorOptions, setSimulatorOptions] = useState(null);
 
   useEffect(( ) => {
     const handleKey = (e) => {
@@ -132,6 +161,7 @@ export default function App() {
     setActivePageInclude(null);
     setInitialXml(null);
     setCanvasKey((key) => key + 1);
+    pageCacheRef.current.clear(); // 새 프로젝트는 이전 캐시와 무관.
   };
 
   const handleOpenProjectClick = () => fileInputRef.current?.click();
@@ -151,6 +181,7 @@ export default function App() {
       setActivePageInclude(null);
       setInitialXml(resolveScenarioXml(String(reader.result)));
       setCanvasKey((key) => key + 1);
+      pageCacheRef.current.clear(); // 단일 파일 열기는 이전 캐시와 무관.
     };
     // onerror 없이는 읽기 실패가 완전히 조용하다 — onload가 그냥 안 불리고
     // 끝나서, 화면엔 "클릭했는데 아무 일도 안 일어남"으로만 보인다.
@@ -162,9 +193,33 @@ export default function App() {
 
   const handleOpenProjectFolderClick = () => folderInputRef.current?.click();
 
-  // 페이지 하나를 읽어서 캔버스에 띄운다 — 폴더를 처음 열 때(시작 페이지)와
-  // 목록에서 다른 페이지를 고를 때 둘 다 이 함수를 거친다.
+  // 지금 보고 있는 페이지를 나가기 직전에 항상 호출 — 캔버스 내용을 그 페이지의
+  // 캐시 엔트리에 커밋해둔다. DiagramCanvas.serialize()가 이미 노출돼 있어 새
+  // API가 필요 없다. 단일 파일 모드(activePageInclude 없음)는 캐시 대상이 아니다.
+  const commitActivePageToCache = () => {
+    if (!activePageInclude) return;
+    const xml = diagramRef.current?.serialize?.();
+    if (xml == null) return;
+    pageCacheRef.current.set(activePageInclude, { xml, isDirty: isCurrentPageDirty });
+  };
+
+  // 페이지 하나를 캔버스에 띄운다 — 폴더를 처음 열 때(시작 페이지)와 목록에서
+  // 다른 페이지를 고를 때 둘 다 이 함수를 거친다. 이미 한 번 열어본 페이지면
+  // 캐시에서 그대로 복원하고(파일을 다시 안 읽음, 편집 내용도 그대로), 처음
+  // 보는 페이지만 파일을 읽는다.
   const loadPageIntoCanvas = (fileMap, include) => {
+    commitActivePageToCache(); // 나가기 전 지금 페이지부터 저장
+
+    const cached = pageCacheRef.current.get(include);
+    if (cached) {
+      resetSelectionState();
+      setActivePageInclude(include);
+      setInitialXml(cached.xml);
+      setIsCurrentPageDirty(cached.isDirty);
+      setCanvasKey((key) => key + 1);
+      return;
+    }
+
     const file = fileMap.get(include);
     if (!file) {
       window.alert(
@@ -178,6 +233,8 @@ export default function App() {
       setActivePageInclude(include);
       setInitialXml(resolveScenarioXml(String(reader.result)));
       setCanvasKey((key) => key + 1);
+      // 처음 읽는 페이지의 캐시 엔트리는 markCurrentPageDirty가 편집이 생길 때
+      // 알아서 채워준다 — 여기서 미리 넣어둘 필요 없음.
     };
     // onerror 없이는 읽기 실패가 완전히 조용하다 — onload가 그냥 안 불리고
     // 끝나서, 화면엔 "클릭했는데 아무 일도 안 일어남"으로만 보인다. webkitdirectory로
@@ -219,6 +276,7 @@ export default function App() {
       const missingCount = parsed.pages.filter((p) => !fileIndex.has(p.include)).length;
       setProject({ ...parsed, files: fileIndex, missingCount });
       setShowProjectPanel(true);
+      pageCacheRef.current.clear(); // 새 프로젝트는 이전 캐시와 무관.
 
       // 시작 페이지(IsStart) 우선, 없으면 마지막에 열려 있던 페이지, 그것도 없으면
       // 목록의 첫 페이지 — 어느 쪽이든 실제로 폴더에서 찾은 파일이어야 한다.
@@ -246,11 +304,8 @@ export default function App() {
   const handleSelectPage = (page) => {
     if (!project) return;
     if (page.include === activePageInclude) return; // 이미 보고 있는 페이지 — 다시 읽을 필요 없음.
-    if (isCurrentPageDirty) {
-      if (!window.confirm('현재 페이지에 저장하지 않은 변경사항이 있습니다. 저장하지 않고 다른 페이지로 이동할까요?')) {
-        return;
-      }
-    }
+    // 페이지별 캐시(pageCacheRef) 덕분에 편집 내용이 사라지지 않으므로, 저장
+    // 안 한 변경사항이 있어도 더 이상 확인창 없이 바로 넘어간다.
     loadPageIntoCanvas(project.files, page.include);
   };
 
@@ -288,11 +343,10 @@ export default function App() {
       window.alert('다른 페이지로 이동하려면 먼저 "프로젝트 열기"로 폴더를 열어야 합니다.');
       return;
     }
-    if (isCurrentPageDirty) {
-      if (!window.confirm('현재 페이지에 저장하지 않은 변경사항이 있습니다. 저장하지 않고 다른 페이지로 이동할까요?')) {
-        return;
-      }
-    }
+    // 페이지별 캐시(pageCacheRef) 덕분에 편집 내용이 사라지지 않으므로, 저장
+    // 안 한 변경사항이 있어도 더 이상 확인창 없이 바로 넘어간다 — 시뮬레이터가
+    // GOTO로 페이지를 넘나들 때도 이 함수를 그대로 타므로, 확인창 없이 캔버스가
+    // 조용히 따라갈 수 있다.
     setPendingFocusBlockId(blockId);
     loadPageIntoCanvas(project.files, pageInclude);
   };
@@ -332,6 +386,28 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasKey]);
+
+  // 시뮬레이터가 켜져있는 동안, 지금 캔버스에 떠 있는 페이지에서 실제로 밟은
+  // 블록에 표시를 남긴다 — 다른 페이지로 넘어간 블록은(그 페이지가 지금 화면에
+  // 없으므로) "📍 캔버스에서 보기"로 이동해야 그때 표시된다. 시뮬레이터를 끄면
+  // (또는 매번 재계산해서 없는 블록은) 자연히 지워진다.
+  useEffect(() => {
+    const diagram = diagramRef.current?.getInstance?.();
+    if (!diagram) return;
+
+    const currentLiveInclude = activePageInclude ?? LIVE_PAGE_INCLUDE;
+    const pageBlockIds = showSimulator
+      ? simulatorMessages.filter((m) => m.blockId != null && m.pageInclude === currentLiveInclude).map((m) => m.blockId)
+      : [];
+    const currentBlockId = pageBlockIds.length > 0 ? pageBlockIds[pageBlockIds.length - 1] : null;
+    const visitedBlockIds = new Set(pageBlockIds.slice(0, -1));
+
+    for (const component of diagram.components.values()) {
+      if (component.type !== 'B') continue;
+      component.shapeElement?.classList.toggle('simulator-current', component.id === currentBlockId);
+      component.shapeElement?.classList.toggle('simulator-visited', visitedBlockIds.has(component.id));
+    }
+  }, [showSimulator, simulatorMessages, activePageInclude, canvasKey]);
 
   const handleSaveProject = () => {
     // TODO: 실제 "빌드" 기능이 생기면 이 체크는 저장이 아니라 그쪽으로 옮긴다 —
@@ -408,6 +484,76 @@ export default function App() {
     }
   };
 
+  // 시뮬레이터가 지금 어느 페이지에 있었는지 — 스냅샷마다 비교해서 "페이지가
+  // 실제로 바뀐 순간"에만 캔버스를 자동으로 따라가게 한다(같은 페이지 안에서
+  // 매 스텝마다 캔버스 시점을 강제로 옮기면 사용자가 자유롭게 둘러볼 수 없어짐).
+  const simulatorLastPageRef = useRef(null);
+
+  const applySimulatorSnapshot = (snapshot) => {
+    setSimulatorMessages(snapshot.messages);
+    setSimulatorStatus(snapshot.status);
+    setSimulatorOptions(snapshot.options);
+    if (snapshot.current && snapshot.current.pageInclude !== simulatorLastPageRef.current) {
+      simulatorLastPageRef.current = snapshot.current.pageInclude;
+      handleSimulatorFocusBlock(snapshot.current.pageInclude, snapshot.current.blockId);
+    }
+  };
+
+  const handleToggleSimulator = async () => {
+    if (showSimulator) {
+      simulatorEngineRef.current?.dispose();
+      simulatorEngineRef.current = null;
+      setShowSimulator(false);
+      return;
+    }
+
+    // 새 세션은 "이전 페이지"가 없는 상태로 시작 — 그래서 첫 start() 스냅샷도
+    // "페이지가 바뀐 것"으로 처리되어 캔버스가 시작 블록으로 한 번 따라간다.
+    simulatorLastPageRef.current = null;
+
+    // 시작 페이지(IsStart) 우선, 없으면 첫 페이지 — "프로젝트 열기" 시 첫 페이지를
+    // 고르는 규칙과 동일. project 자체가 없으면(단일 파일만 연 경우) 지금 캔버스를
+    // 그대로 대상으로 삼는다.
+    const startPageInclude =
+      project?.pages.find((p) => p.isStart)?.include ?? project?.pages[0]?.include ?? LIVE_PAGE_INCLUDE;
+
+    const engine = createSimulatorEngine({
+      project,
+      meta: effectiveMeta,
+      getLiveDiagram: () => diagramRef.current?.getInstance?.() ?? null,
+      getLivePageInclude: () => activePageInclude ?? LIVE_PAGE_INCLUDE,
+      startPageInclude,
+    });
+    simulatorEngineRef.current = engine;
+    setShowSimulator(true);
+    applySimulatorSnapshot(await engine.start());
+  };
+
+  const handleSimulatorSend = async (text) => {
+    const engine = simulatorEngineRef.current;
+    if (!engine) return;
+    applySimulatorSnapshot(await engine.reply(text));
+  };
+
+  const handleSimulatorRestart = async () => {
+    const engine = simulatorEngineRef.current;
+    if (!engine) return;
+    applySimulatorSnapshot(await engine.reset());
+  };
+
+  const handleSimulatorClose = () => {
+    simulatorEngineRef.current?.dispose();
+    simulatorEngineRef.current = null;
+    setShowSimulator(false);
+  };
+
+  // "📍 캔버스에서 보기" — LIVE_PAGE_INCLUDE는 실제 project 페이지가 아니라 "지금
+  // 열려있는 캔버스 그 자체"를 가리키는 내부 값이라, navigateToBlockInPage에는
+  // 실제 activePageInclude로 바꿔서 넘긴다.
+  const handleSimulatorFocusBlock = (pageInclude, blockId) => {
+    navigateToBlockInPage(pageInclude === LIVE_PAGE_INCLUDE ? activePageInclude : pageInclude, blockId);
+  };
+
   return (
     <div className="app-shell">
       {/* 화면에는 절대 안 보이고, "열기" 리본 버튼이 클릭을 여기로 위임한다.
@@ -449,6 +595,8 @@ export default function App() {
         hasProject={!!project}
         showProjectPanel={showProjectPanel}
         onToggleProjectPanel={() => setShowProjectPanel((v) => !v)}
+        showSimulator={showSimulator}
+        onToggleSimulator={handleToggleSimulator}
       />
 
       <div className="workspace">
@@ -520,6 +668,18 @@ export default function App() {
           results={searchResults}
           onResultClick={handleSearchResultClick}
           onClose={() => setShowSearchPanel(false)}
+        />
+      )}
+
+      {showSimulator && (
+        <ScenarioSimulatorPanel
+          messages={simulatorMessages}
+          status={simulatorStatus}
+          options={simulatorOptions}
+          onSend={handleSimulatorSend}
+          onRestart={handleSimulatorRestart}
+          onClose={handleSimulatorClose}
+          onFocusBlock={handleSimulatorFocusBlock}
         />
       )}
     </div>

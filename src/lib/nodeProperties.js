@@ -37,6 +37,13 @@ export function findTargetBlockProp(nodeDef) {
     return nodeDef?.properties?.find((p) => p.isTargetBlock) ?? null;
 }
 
+// ScriptNode처럼 값 편집을 커스텀 스크립트 에디터로 여는 프로퍼티를 가진
+// 노드인지 판별한다. PropertyPanel(에디터 UI 선택)과 scenarioSimulator(값을
+// 가정하고 진행할지 판단) 양쪽에서 같은 방식으로 판별해야 하므로 공용 lib로 뺐다.
+export function hasScriptEditorProp(nodeDef) {
+    return nodeDef?.properties?.some((p) => p.customEditorTypeName === 'ScriptEditor') ?? false;
+}
+
 export function writePropertyValue(userData, prop, value) {
     if (prop.buildDataType === 'CData') {
         const child = userData.child(prop.buildName) ?? userData.appendChild(prop.buildName);

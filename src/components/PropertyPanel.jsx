@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { useStylesheet } from '../lib/useStylesheet.js';
 import { NodeWrapper } from '../lib/diagram-library.js';
 import { groupColorStyle } from '../lib/groupColors.js';
-import { readPropertyValue, writePropertyValue } from '../lib/nodeProperties.js';
+import { readPropertyValue, writePropertyValue, hasScriptEditorProp } from '../lib/nodeProperties.js';
 import ScriptEditorModal from './ScriptEditorModal.jsx';
 
 // 어떤 필드가 지금 활성 상태인지(가장 최근에 포커스됐는지)를 필드 각각이 스스로
@@ -36,14 +36,6 @@ const FieldDescriptionContext = createContext(null);
  * custom property changes (only caption/comment/move/etc. are tracked),
  * so these edits are NOT undoable via the ribbon's 실행 취소 button.
  */
-
-// ScriptNode's node-level `description` is really JS-authoring documentation
-// (syntax notes, the full util.* function reference) rather than a
-// user-facing summary of the block — it belongs behind the script editor's
-// help button, not repeated at the bottom of the property panel.
-function hasScriptEditorProp(nodeDef) {
-    return nodeDef?.properties?.some((p) => p.customEditorTypeName === 'ScriptEditor') ?? false;
-}
 
 // RecordsetGetValueNode 전용: FieldIndex/FieldName 중 하나(둘 중 하나만 유효 —
 // meta 설명상 FieldIndex를 쓰면 FieldName은 무시됨)와 Variable이 세미콜론(;)으로
