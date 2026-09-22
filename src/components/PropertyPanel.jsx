@@ -45,6 +45,23 @@ function hasScriptEditorProp(nodeDef) {
     return nodeDef?.properties?.some((p) => p.customEditorTypeName === 'ScriptEditor') ?? false;
 }
 
+// RecordsetGetValueNode 전용: FieldIndex/FieldName 중 하나(둘 중 하나만 유효 —
+// meta 설명상 FieldIndex를 쓰면 FieldName은 무시됨)와 Variable이 세미콜론(;)으로
+// 구분된 값을 개수 맞춰 나란히 넣어야 하는 한 쌍이라, 세 프로퍼티를 각각 텍스트
+// 필드로 따로 보여주는 대신 "이름/인덱스 - 변수" 행을 하나씩 추가하는 매핑
+// 편집기 하나로 합쳐서 보여준다(사용자 피드백 — ; 구분 문자열을 직접 타이핑하는
+// 대신 필드 단위로 추가/삭제하고 싶다는 요청, RecordsetGetValueNode 외 다른
+// 노드에도 같은 이름의 프로퍼티가 나타날 가능성은 낮지만 노드 타입명이 아니라
+// 이 세 프로퍼티가 실제로 다 있는지로 판별해 좀 더 안전하게 잡는다).
+function findRecordsetFieldTriplet(nodeDef) {
+    const props = nodeDef?.properties ?? [];
+    const byName = Object.fromEntries(props.map((p) => [p.name, p]));
+    if (byName.ColumnIndex && byName.ColumnName && byName.Variable) {
+        return byName;
+    }
+    return null;
+}
+
 function ensureUserData(block, meta) {
     if (!block.userData) {
         const buildTag = meta?.nodes?.[block.metaName]?.buildTag ?? block.metaName;
@@ -94,6 +111,7 @@ function PropertyPanelBody({ block, nodeDef, meta, autoOpenScript, onAutoOpenScr
 
     // ScriptNode처럼 노드 설명을 도움말 모달로 따로 빼둔 경우는 하단에도 안 보여준다.
     const nodeDescription = hasScriptEditorProp(nodeDef) ? null : nodeDef?.description;
+    const recordsetFields = findRecordsetFieldTriplet(nodeDef);
     // 리본/캔버스 블록과 같은 그룹 색상 체계를 재사용 — 새 팔레트를 만들지 않고
     // 지금 선택된 블록의 카테고리 색을 패널 전체의 accent로 그대로 가져다 쓴다.
     const accentStyle = groupColorStyle(nodeDef?.group);
@@ -145,18 +163,36 @@ function PropertyPanelBody({ block, nodeDef, meta, autoOpenScript, onAutoOpenScr
                     {nodeDef?.properties?.length > 0 && (
                         <>
                             <div className="property-panel-section-title">속성</div>
-                            {nodeDef.properties.map((prop) => (
-                                <PropertyField
-                                    key={prop.name}
-                                    block={block}
-                                    prop={prop}
-                                    meta={meta}
-                                    nodeDescription={nodeDef.description}
-                                    autoOpenScript={autoOpenScript}
-                                    onAutoOpenScriptConsumed={onAutoOpenScriptConsumed}
-                                    onDirty={onDirty}
-                                />
-                            ))}
+                            {nodeDef.properties.map((prop) => {
+                                // ColumnIndex/Variable은 아래 ColumnName 자리에서 매핑 편집기
+                                // 하나로 같이 그려지므로 각자 자리에서는 건너뛴다.
+                                if (recordsetFields && (prop.name === 'ColumnIndex' || prop.name === 'Variable')) {
+                                    return null;
+                                }
+                                if (recordsetFields && prop.name === 'ColumnName') {
+                                    return (
+                                        <RecordsetFieldMappingField
+                                            key="recordset-field-mapping"
+                                            block={block}
+                                            meta={meta}
+                                            fields={recordsetFields}
+                                            onDirty={onDirty}
+                                        />
+                                    );
+                                }
+                                return (
+                                    <PropertyField
+                                        key={prop.name}
+                                        block={block}
+                                        prop={prop}
+                                        meta={meta}
+                                        nodeDescription={nodeDef.description}
+                                        autoOpenScript={autoOpenScript}
+                                        onAutoOpenScriptConsumed={onAutoOpenScriptConsumed}
+                                        onDirty={onDirty}
+                                    />
+                                );
+                            })}
                         </>
                     )}
 
@@ -199,6 +235,28 @@ function PropertyField({ block, prop, meta, nodeDescription, autoOpenScript, onA
                     }}
                 />
             </Field>
+        );
+    }
+
+    // meta.json이 이 프로퍼티에 valueSeparator를 정의해뒀다는 건 "여러 값을 구분자로
+    // 이어붙인 문자열"이라는 뜻(예: AudioData, SPParams — 설명에도 "여러개를 설정하는
+    // 경우 ;로 구분합니다"라고 적혀있다). 그 구분자 문자열을 직접 입력하게 두는 대신
+    // 값 하나하나를 필드로 추가/삭제하는 리스트 편집기로 보여준다.
+    if (prop.valueSeparator) {
+        return (
+            <ListPropertyField
+                fieldKey={prop.name}
+                label={label}
+                description={prop.description}
+                isEmpty={isEmpty}
+                separator={prop.valueSeparator}
+                value={value}
+                onChange={(next) => {
+                    setValue(next);
+                    writePropertyValue(ensureUserData(block, meta), prop, next);
+                    onDirty?.();
+                }}
+            />
         );
     }
 
@@ -274,6 +332,148 @@ function PropertyField({ block, prop, meta, nodeDescription, autoOpenScript, onA
                     writePropertyValue(ensureUserData(block, meta), prop, e.target.value);
                 }}
             />
+        </Field>
+    );
+}
+
+// value(구분자로 이어붙인 문자열)를 필드 단위로 쪼개서 각각 지우기 버튼이 달린
+// 입력칸으로 보여주고, "+ 필드 추가"로 새 칸을 늘린다. 편집 중에는 항상 최소
+// 한 칸(빈 문자열이라도)을 보여줘야 사용자가 첫 값을 타이핑할 자리가 생긴다 —
+// 그 한 칸을 지우면 다시 값 없는 상태(빈 문자열)로 돌아가고, 다음 렌더에서
+// 똑같이 빈 칸 하나로 보여진다(무한 루프 아님, split('')이 아니라 빈 문자열
+// 자체를 []로 취급하기 때문).
+function ListPropertyField({ fieldKey, label, description, isEmpty, separator, value, onChange }) {
+    const parsed = value ? value.split(separator) : [];
+    const items = parsed.length > 0 ? parsed : [''];
+
+    const commit = (nextItems) => onChange(nextItems.join(separator));
+
+    return (
+        <Field fieldKey={fieldKey} label={label} description={description} isEmpty={isEmpty}>
+            <div className="property-field-list">
+                {items.map((item, index) => (
+                    <div className="property-field-list-row" key={index}>
+                        <input
+                            type="text"
+                            value={item}
+                            onChange={(e) => {
+                                const next = [...items];
+                                next[index] = e.target.value;
+                                commit(next);
+                            }}
+                        />
+                        <button
+                            type="button"
+                            className="property-field-list-remove"
+                            aria-label="필드 삭제"
+                            onClick={() => commit(items.filter((_, i) => i !== index))}
+                        >
+                            ×
+                        </button>
+                    </div>
+                ))}
+                <button type="button" className="property-field-list-add" onClick={() => commit([...items, ''])}>
+                    + 필드 추가
+                </button>
+            </div>
+        </Field>
+    );
+}
+
+// ColumnIndex(또는 ColumnName)과 Variable을 같은 순번끼리 짝지어 {key, variable}
+// 행 배열로 만든다. 두 소스 문자열의 개수가 안 맞는 저장 데이터(수동 편집 등으로
+// 어긋난 경우)도 있을 수 있어 더 긴 쪽 길이에 맞춰 짧은 쪽은 빈 문자열로 채운다.
+function zipFields(keySource, variableSource) {
+    const keys = keySource ? keySource.split(';') : [];
+    const variables = variableSource ? variableSource.split(';') : [];
+    const length = Math.max(keys.length, variables.length, 1);
+    return Array.from({ length }, (_, i) => ({ key: keys[i] ?? '', variable: variables[i] ?? '' }));
+}
+
+// RecordsetGetValueNode의 ColumnIndex/ColumnName/Variable 세 프로퍼티를 하나의
+// "이름(또는 인덱스) → 변수" 매핑 편집기로 합쳐서 보여준다. 어느 쪽 키(이름/
+// 인덱스)를 쓸지는 라디오로 고르고, 안 쓰는 쪽 프로퍼티는 커밋할 때마다 빈
+// 값으로 비워서 값이 예전 모드 그대로 남아 엔진에 혼선을 주는 일이 없게 한다.
+function RecordsetFieldMappingField({ block, meta, fields, onDirty }) {
+    const initialIndex = readPropertyValue(block.userData, fields.ColumnIndex) ?? '';
+    const initialName = readPropertyValue(block.userData, fields.ColumnName) ?? '';
+    const initialVariable = readPropertyValue(block.userData, fields.Variable) ?? '';
+
+    const [mode, setMode] = useState(initialIndex ? 'index' : 'name');
+    const [rows, setRows] = useState(() => zipFields(mode === 'index' ? initialIndex : initialName, initialVariable));
+
+    const commit = (nextRows, nextMode) => {
+        setRows(nextRows);
+        setMode(nextMode);
+        const data = ensureUserData(block, meta);
+        const keyProp = nextMode === 'index' ? fields.ColumnIndex : fields.ColumnName;
+        const otherProp = nextMode === 'index' ? fields.ColumnName : fields.ColumnIndex;
+        writePropertyValue(data, keyProp, nextRows.map((r) => r.key).join(';'));
+        writePropertyValue(data, otherProp, '');
+        writePropertyValue(data, fields.Variable, nextRows.map((r) => r.variable).join(';'));
+        onDirty?.();
+    };
+
+    const updateRow = (index, part, val) => {
+        commit(rows.map((row, i) => (i === index ? { ...row, [part]: val } : row)), mode);
+    };
+
+    const removeRow = (index) => {
+        const next = rows.filter((_, i) => i !== index);
+        commit(next.length > 0 ? next : [{ key: '', variable: '' }], mode);
+    };
+
+    const isEmpty = fields.Variable.required && rows.every((r) => !r.variable);
+    const label = (
+        <>
+            필드 매핑
+            {fields.Variable.required && <span className="property-field-required">*</span>}
+        </>
+    );
+    const keyLabel = mode === 'index'
+        ? (fields.ColumnIndex.displayName || fields.ColumnIndex.name)
+        : (fields.ColumnName.displayName || fields.ColumnName.name);
+
+    return (
+        <Field
+            fieldKey="recordset-field-mapping"
+            label={label}
+            description={`${fields.ColumnName.description} ${fields.Variable.description}`}
+            isEmpty={isEmpty}
+        >
+            <div className="property-field-mapping">
+                <div className="property-field-mapping-mode">
+                    <label>
+                        <input type="radio" checked={mode === 'name'} onChange={() => commit(rows, 'name')} />
+                        이름으로
+                    </label>
+                    <label>
+                        <input type="radio" checked={mode === 'index'} onChange={() => commit(rows, 'index')} />
+                        인덱스로
+                    </label>
+                </div>
+                <div className="property-field-mapping-header">
+                    <span>{keyLabel}</span>
+                    <span>{fields.Variable.displayName || fields.Variable.name}</span>
+                </div>
+                {rows.map((row, index) => (
+                    <div className="property-field-mapping-row" key={index}>
+                        <input type="text" value={row.key} onChange={(e) => updateRow(index, 'key', e.target.value)} />
+                        <input type="text" value={row.variable} onChange={(e) => updateRow(index, 'variable', e.target.value)} />
+                        <button
+                            type="button"
+                            className="property-field-list-remove"
+                            aria-label="필드 삭제"
+                            onClick={() => removeRow(index)}
+                        >
+                            ×
+                        </button>
+                    </div>
+                ))}
+                <button type="button" className="property-field-list-add" onClick={() => commit([...rows, { key: '', variable: '' }], mode)}>
+                    + 필드 추가
+                </button>
+            </div>
         </Field>
     );
 }
